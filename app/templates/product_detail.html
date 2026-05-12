@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block style %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style_product_detail.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="page-wrapper">
+  <div id="loading" class="loading">กำลังโหลดข้อมูลสินค้า...</div>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+  <div id="product-detail" class="product-detail hidden">
+    <img id="product-image" src="" alt="รูปสินค้า" />
+    <h1 id="product-name"></h1>
+    <div class="price" id="product-price"></div>
+    <p id="product-warranty"></p>
+
+    <div class="coupon-section">
+      <input type="text" id="coupon-code" placeholder="กรอกคูปองส่วนลด">
+      <button id="check-coupon">เช็คคูปอง</button>
+      <p id="coupon-result"></p>
+    </div>
+
+    <div class="quantity-section">
+      <label for="product-qty">จำนวน:</label>
+      <input type="number" id="product-qty" value="1" min="1" max="5">
+    </div>
+
+    <button id="buy-btn" class="btn-main">สั่งซื้อสินค้า</button>
+  </div>
+
+  <!-- ✅ Popup Modal -->
+  <div id="popup-modal" class="popup-modal hidden">
+    <div class="popup-box">
+      <div id="popup-icon">✅</div>
+      <h2 id="popup-title">แจ้งเตือน</h2>
+      <p id="popup-message">ข้อความระบบ</p>
+      <button id="popup-close" class="popup-button">ตกลง</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.categoryId = "{{ category_id }}";
+  window.productId = "{{ product_id }}";
+</script>
+<script src="{{ url_for('static', filename='product_detail.js') }}"></script>
+{% endblock %}

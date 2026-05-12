@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+
+{% block style %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style_purchase_logs.css') }}">
+<style>
+body {
+    background-color: #000000;
+    color: white;
+    font-family: 'Prompt', sans-serif;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 50px auto;
+    text-align: center;
+}
+
+h1 {
+    font-size: 32px;
+    margin-bottom: 40px;
+    color: #66fcf1;
+    text-shadow: 0 0 8px #00ffff;
+}
+
+#orders-container {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+}
+
+/* Card แต่ละคำสั่งซื้อ */
+.order-card {
+    background: #1e293b;
+    border-radius: 20px;
+    padding: 25px;
+    box-shadow: 0 0 10px rgba(0,255,255,0.3);
+    width: 280px;
+    transition: transform 0.2s;
+}
+
+.order-card:hover {
+    transform: scale(1.03);
+}
+
+.order-card h3 {
+    margin-bottom: 12px;
+    font-size: 20px;
+    color: #66fcf1;
+}
+
+.order-card p {
+    margin: 4px 0;
+    font-size: 16px;
+    color: #eee;
+}
+
+/* ข้อความเมื่อไม่มีคำสั่งซื้อ */
+.empty-message {
+    font-size: 20px;
+    color: #aaa;
+    margin-top: 80px;
+    width: 100%;
+}
+
+.empty-message span {
+    display: inline-block;
+    margin-top: 10px;
+    color: #66fcf1;
+    font-weight: 500;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>ประวัติคำสั่งซื้อ</h1>
+    <div id="orders-container">
+        กำลังโหลดประวัติคำสั่งซื้อ...
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+    const token = localStorage.getItem("token");
+    const container = document.getElementById("orders-container");
+
+    if (!token) {
+        container.innerHTML = `
+            <div class='empty-message'>
+                ⛔ กรุณาเข้าสู่ระบบก่อน
+            </div>
+        `;
+        console.warn("⛔ ไม่มี token ใน localStorage");
+        return;
+    }
+
+    console.log("📦 เริ่มดึงข้อมูลคำสั่งซื้อ...");
+    fetch("/api/products/me/logs/product/0/10", {
+        headers: { "Authorization": `Bearer ${token}` }
+    })
+    .then(async res => {
+        console.log("📥 Response status:", res.status);
+        if (!res.ok) {
+            const errorText = await res.text();
+            console.error("❌ API ไม่สำเร็จ:", errorText);
+            throw new Error("API error");
+        }
+        return res.json();
+    })
+    .then(data => {
+        console.log("✅ ได้ข้อมูลจาก API:", data);
+
+        if (data.status && data.results.length > 0) {
+            const ordersHtml = data.results.map(order => `
+                <div class="order-card">
+                    <h3>${order.product.name}</h3>
+                    <p>💰 ราคา: ${order.product.price} ฿</p>
+                    <p>🗓 วันที่: ${order.dt_purchased}</p>
+                    <p>📦 สถานะ: ${order.refund ? "คืนเงินแล้ว" : "สำเร็จ"}</p>
+                </div>
+            `).join("");
+            container.innerHTML = ordersHtml;
+        } else {
+            container.innerHTML = `
+                <div class="empty-message">
+                    📭 ยังไม่มีคำสั่งซื้อในระบบ<br>
+                    <span>ลองไปเลือกสินค้าดูสิ!</span>
+                </div>
+            `;
+        }
+    })
+    .catch(err => {
+        console.error("🚨 เกิดข้อผิดพลาด:", err);
+        container.innerHTML = `
+            <div class="empty-message">❌ เกิดข้อผิดพลาดในการโหลดข้อมูล</div>
+        `;
+    });
+});
+</script>
+{% endblock %}

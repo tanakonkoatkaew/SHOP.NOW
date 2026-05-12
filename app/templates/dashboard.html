@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+
+{% block style %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style_dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-hero">
+    <h1>ยินดีต้อนรับสู่ UTCC STORE</h1>
+    <p>สินค้าแนะนำ</p>
+</div>
+
+<div class="product-highlight">
+
+    <div class="product-card">
+        <img src="{{ url_for('static', filename='product_test.png') }}" alt="TEST 1">
+        <h3>TEST 1🔥</h3>
+        <p class="price">เพียง xxx ฿</p>
+        <p class="description">ทดลองสินค้า 1</p>
+        <a href="{{ url_for('frontend.products') }}" class="btn-buy">ดูสินค้า</a>
+    </div>
+
+    <div class="product-card">
+        <img src="{{ url_for('static', filename='product_test.png') }}" alt="TEST 2">
+        <h3>TEST 2🔥</h3>
+        <p class="price">เพียง xxx ฿</p>
+        <p class="description">ทดลองสินค้า 2</p>
+        <a href="{{ url_for('frontend.products') }}" class="btn-buy">ดูสินค้า</a>
+    </div>
+
+    <div class="product-card">
+        <img src="{{ url_for('static', filename='product_test.png') }}" alt="TEST 3">
+        <h3>TEST 3🔥</h3>
+        <p class="price">เพียง xxx ฿</p>
+        <p class="description">ทดลองสินค้า 3</p>
+        <a href="{{ url_for('frontend.products') }}" class="btn-buy">ดูสินค้า</a>
+    </div>
+
+</div>
+
+<div class="cta">
+    <a href="{{ url_for('frontend.products') }}" class="btn-main">ดูสินค้าทั้งหมด ➔</a>
+</div>
+{% endblock %}

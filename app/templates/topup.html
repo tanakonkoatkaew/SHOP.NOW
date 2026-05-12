@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block style %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style_topup.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="topup-container">
+    <h1>เติมเงินเข้าสู่ระบบ</h1>
+    <p>กรุณาระบุจำนวนเงินที่คุณต้องการเติม</p>
+
+    <!-- ✅ ระบุจำนวนเงิน -->
+    <div class="form-group">
+        <label for="amount">จำนวนเงิน (บาท):</label>
+        <input type="number" id="amount" name="amount" placeholder="เช่น 100">
+    </div>
+
+    <!-- ✅ ช่องทางการชำระเงิน -->
+    <div class="form-group">
+        <label for="payment_method">ช่องทางการชำระเงิน:</label>
+        <div id="paymentDropdown" class="custom-dropdown">
+            <div class="selected">PromptPay (แนะนำ)</div>
+            <div class="dropdown-list">
+                <div data-value="promptpay">PromptPay (แนะนำ)</div>
+                <div data-value="bank">โอนบัญชีธนาคาร</div>
+                <div data-value="truewallet">TrueMoney Wallet</div>
+                <div data-value="redeem">เติมด้วยรหัส</div>
+            </div>
+            <input type="hidden" id="payment_method" value="promptpay">
+        </div>
+    </div>
+
+    <!-- ✅ ฟอร์มรหัส Redeem -->
+    <div class="form-group hidden" id="redeem-form">
+        <label for="redeem-code">รหัสเติมเงิน:</label>
+        <input type="text" id="redeem-code" placeholder="กรอกรหัสที่นี่">
+    </div>
+
+    <!-- ✅ กล่อง QR PromptPay SCB -->
+    <div id="promptpay-info" class="form-group hidden" style="margin-top: 10px; padding: 15px; border-radius: 12px; background: linear-gradient(135deg, #2c2c2c, #1a1a1a); box-shadow: 0 0 10px rgba(0,255,255,0.3); text-align: center;">
+        <strong style="color: #00ffff; font-size: 18px;">📲 สแกนจ่ายผ่าน PromptPay</strong><br><br>
+        <img src="{{ url_for('static', filename='images/kbank_qr.png') }}" alt="KBANK PromptPay QR" style="max-width: 250px; border-radius: 12px; box-shadow: 0 0 8px rgba(0,255,255,0.4);">
+        <p style="color: #ccc; margin-top: 10px;">
+            เลขพร้อมเพย์: <strong>0722557948</strong><br>
+            ชื่อบัญชี: ธนกร โกฎิแก้ว<br>
+            ธนาคาร: KBANK กสิกรไทย
+        </p>
+    </div>
+
+    <!-- ✅ ปุ่มส่ง -->
+    <button id="submit-topup" class="btn-main">สร้าง QR เติมเงิน</button>
+
+    <!-- ✅ แสดงข้อมูลการชำระ -->
+    <div id="payment-info" class="payment-info" style="display: none;">
+        <h3>ช่องทางชำระเงิน</h3>
+        <img id="qr-image" src="" alt="QR Code">
+        <p>รหัสอ้างอิง: <span id="ref-code"></span></p>
+        <p id="payment-status">รอสแกนชำระเงิน...</p>
+
+        <!-- ✅ ปุ่มอัปโหลดสลิป -->
+        <input type="file" id="slip-upload" accept="image/*" class="hidden">
+        <button class="btn-main hidden" id="upload-slip-btn">📤 อัปโหลดสลิป</button>
+
+        <!-- ✅ ปุ่มยกเลิก -->
+        <button class="btn-cancel" id="btn-cancel">ยกเลิก</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='topup.js') }}"></script>
+{% endblock %}

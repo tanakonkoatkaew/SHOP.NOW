@@ -1,0 +1,214 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Poppins', sans-serif;
+    background-color: #000000 fixed;
+    color: #fff;
+    height: 100vh;
+}
+
+.login-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    padding: 20px;
+    box-sizing: border-box;
+}
+
+.login-card {
+    margin: auto;
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(25px);
+    padding: 50px;
+    border-radius: 25px;
+    box-shadow: 0 8px 35px rgba(0, 0, 0, 0.5), 0 0 40px rgba(0, 242, 254, 0.2);
+    text-align: center;
+    width: 420px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-sizing: border-box;
+}
+
+.logo {
+    width: 80px;
+    margin-bottom: 25px;
+}
+
+h2 {
+    margin-bottom: 30px;
+    font-weight: 700;
+    font-size: 2rem;
+    text-shadow: 0 0 15px #00f2fe, 0 0 25px #00f2fe;
+    color: #66fcf1;
+}
+
+.input-container {
+    position: relative;
+    margin-bottom: 20px;
+}
+
+.input-container i {
+    position: absolute;
+    top: 50%;
+    left: 20px;
+    transform: translateY(-50%);
+    color: #bbb;
+    font-size: 18px;
+}
+
+.input-container input {
+    width: 100%;
+    padding: 15px 20px 15px 50px;
+    border-radius: 50px;
+    border: none;
+    background: rgba(255, 255, 255, 0.15);
+    backdrop-filter: blur(10px);
+    box-shadow: inset 3px 3px 8px rgba(0,0,0,0.3), inset -3px -3px 8px rgba(255,255,255,0.1);
+    color: #fff;
+    font-size: 16px;
+    box-sizing: border-box;
+}
+
+.input-container input::placeholder {
+    color: #aaa;
+}
+
+.input-container input:focus {
+    outline: none;
+    box-shadow: 0 0 15px #00f2fe;
+}
+
+.remember {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    margin-bottom: 25px;
+    color: #ccc;
+}
+
+.remember a {
+    color: #00f2fe;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.btn-main {
+    width: 100%;
+    background: linear-gradient(135deg, #00f2fe, #4facfe);
+    padding: 15px;
+    border: none;
+    border-radius: 50px;
+    color: #fff;
+    font-size: 18px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 8px 20px rgba(0, 242, 254, 0.4);
+    transition: 0.3s;
+    margin-top: 15px;
+    margin-bottom: 10px;
+}
+
+.btn-main:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 30px #00f2fe;
+}
+
+.bottom-text {
+    margin-top: 25px;
+    font-size: 14px;
+    color: #bbb;
+}
+
+.bottom-text a {
+    color: #66fcf1;
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.flash-message {
+    position: fixed;
+    top: 30px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 999;
+}
+
+.flash {
+    backdrop-filter: blur(15px);
+    background: rgba(0, 242, 254, 0.08);
+    padding: 15px 30px;
+    border-radius: 20px;
+    color: #fff;
+    font-size: 16px;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    animation: fadeout 3s forwards;
+}
+
+.flash.success {
+    border: 1px solid rgba(0,255,0,0.2);
+    box-shadow: 0 0 20px rgba(0,255,0,0.4);
+}
+
+@keyframes fadeout {
+    0% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+#login-form {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+@media (max-width: 768px) {
+  /* Navbar */
+  .hero {
+  padding-top: 60px;
+  margin-bottom: 40px;
+}
+
+.hero h1 {
+  font-size: 2rem;
+}
+
+.hero p {
+  font-size: 1rem;
+  padding: 0 10px;
+}
+
+.product-section {
+  margin-bottom: 50px;
+}
+
+.product-section h2 {
+  font-size: 1.5rem;
+  margin-bottom: 25px;
+}
+
+.product-container {
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+.product-card {
+  width: 90% !important;
+  padding: 20px;
+}
+
+.product-card h3 {
+  font-size: 1rem;
+}
+
+.price {
+  font-size: 1.2rem;
+}
+
+.btn-buy {
+  width: 100%;
+  font-size: 1rem;
+  padding: 10px 20px;
+}
+
+}

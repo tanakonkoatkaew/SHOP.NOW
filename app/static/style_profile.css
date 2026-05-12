@@ -1,0 +1,50 @@
+.profile-card {
+  background: #fff;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 0 15px rgba(0,0,0,0.15);
+  max-width: 600px;
+  margin: 50px auto;
+  animation: fadeIn 0.6s ease-in-out;
+}
+
+.profile-card h2 {
+  text-align: center;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.profile-field {
+  font-size: 18px;
+  margin: 12px 0;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px dotted #ccc;
+  padding-bottom: 5px;
+  color: #444;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 480px) {
+  .profile-card {
+    padding: 20px;
+    margin: 30px 15px;
+    border-radius: 10px;
+  }
+
+  .profile-card h2 {
+    font-size: 1.5rem;
+  }
+
+  .profile-field {
+    flex-direction: column;
+    align-items: flex-start;
+    font-size: 16px;
+    gap: 4px;
+  }
+}
+

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- ✅ แสดงไอคอนแท็บ (favicon) -->
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/my_logo.png') }}">
+
+    <title>Online Shopping Platform</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style_base.css') }}">
+    {% block style %}{% endblock %}
+</head>
+<body>
+
+<canvas id="background-canvas"></canvas>
+
+<header class="navbar">
+  <div class="nav-container">
+    <!-- ✅ ปุ่ม toggle สำหรับ mobile -->
+    <button class="menu-toggle" onclick="toggleMenu()">☰</button>
+
+    <!-- ✅ เมนูหลัก -->
+    <nav id="mobile-menu">
+      <a href="{{ url_for('frontend.dashboard') }}">Dashboard</a>
+      <a href="{{ url_for('frontend.home') }}">Home</a>
+      <a href="{{ url_for('frontend.topup') }}">เติมเงิน</a>
+      <a href="{{ url_for('frontend.products') }}">สินค้า</a>
+      <a href="{{ url_for('frontend.contact') }}">ติดต่อ</a>
+      <a href="{{ url_for('frontend.purchase_logs') }}">ประวัติการซื้อ</a>
+      <a href="{{ url_for('frontend.profile') }}">โปรไฟล์</a>
+      <a href="{{ url_for('frontend.topup_logs') }}">ประวัติเติมเงิน</a>
+
+      <div class="user-info-container" id="navbar-auth">
+        <div class="user-details" id="navbar-user"></div>
+        <a href="/login" class="btn-signin" id="navbar-login">SIGN IN</a>
+        <button class="btn-logout" id="navbar-logout">LOGOUT</button>
+      </div>
+    </nav>
+  </div>
+</header>
+
+<main class="main-content">
+  {% block content %}{% endblock %}
+</main>
+
+<footer>© 2025 Online Shopping Platform</footer>
+
+<!-- ✅ Script -->
+<script>
+  function toggleMenu() {
+    const menu = document.getElementById('mobile-menu');
+    menu.classList.toggle('open');
+  }
+</script>
+
+<script src="{{ url_for('static', filename='animated_background.js') }}"></script>
+<script src="{{ url_for('static', filename='navbar_auth.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

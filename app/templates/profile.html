@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block style %}
+<style>
+body {
+    background-color: #000000;
+    color: white;
+    font-family: 'Prompt', sans-serif;
+}
+
+.container {
+    max-width: 1200px;
+    margin: 50px auto;
+    text-align: center;
+}
+
+.profile-card {
+    background: #12133f;
+    padding: 30px;
+    border-radius: 20px;
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+    width: 360px;
+    margin: 50px auto;
+    animation: fadeIn 0.6s ease-in-out;
+    text-align: left;
+}
+
+.profile-card h2 {
+    text-align: center;
+    margin-bottom: 25px;
+    font-size: 26px;
+    color: #66fcf1;
+    text-shadow: 0 0 8px #00ffff;
+}
+
+.profile-field {
+    font-size: 18px;
+    margin: 12px 0;
+    padding-bottom: 8px;
+    border-bottom: 1px dotted #444;
+    color: #eee;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="profile-card">
+        <h2>👤 ข้อมูลบัญชีของคุณ</h2>
+        <div class="profile-field"><strong>👤 Username:</strong> <span id="username">-</span></div>
+        <div class="profile-field"><strong>📧 Email:</strong> <span id="email">-</span></div>
+        <div class="profile-field"><strong>📱 Phone:</strong> <span id="phone">-</span></div>
+        <div class="profile-field"><strong>💰 เครดิต:</strong> <span id="credit">0.00</span> บาท</div>
+        <div class="profile-field"><strong>🎁 Reward:</strong> <span id="reward">0.00</span> คะแนน</div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    const token = localStorage.getItem("token");
+    if (!token) {
+        alert("กรุณาเข้าสู่ระบบก่อน");
+        window.location.href = "/login";
+        return;
+    }
+
+    fetch('/api/auth/me/profile', {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status) {
+            const p = data.data;
+            document.getElementById("username").innerText = p.username || "-";
+            document.getElementById("email").innerText = p.email || "-";
+            document.getElementById("phone").innerText = p.phone || "-";
+            document.getElementById("credit").innerText = p.credit?.toFixed(2) || "0.00";
+            document.getElementById("reward").innerText = p.reward?.toFixed(2) || "0.00";
+        } else {
+            alert("ดึงข้อมูลไม่สำเร็จ");
+        }
+    })
+    .catch(err => {
+        console.error("เกิดข้อผิดพลาด:", err);
+        document.querySelector(".profile-card").innerHTML = "<p style='text-align:center;'>เกิดข้อผิดพลาดในการโหลดข้อมูล</p>";
+    });
+});
+</script>
+{% endblock %}

@@ -1,0 +1,117 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Prompt', sans-serif;
+    background-color: #000000;
+    color: #fff;
+}
+
+/* ให้ main-content ยืดสูงและจัดกลาง */
+.main-content {
+    min-height: calc(100vh - 100px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 60px 20px;
+}
+
+/* กล่องติดต่อแบบ Glassmorphism */
+.contact-container {
+    max-width: 700px;
+    width: 100%;
+    padding: 40px;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(15px);
+    border-radius: 25px;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    text-align: center;
+}
+
+/* หัวเรื่อง */
+.contact-container h1 {
+    font-size: 2.5rem;
+    font-weight: 800;
+    color: #66fcf1;
+    text-shadow: 0 0 15px #00f2fe;
+    margin-bottom: 20px;
+}
+
+/* คำอธิบาย */
+.contact-container p {
+    font-size: 1.1rem;
+    color: #ccc;
+    opacity: 0.85;
+    margin-bottom: 30px;
+}
+
+/* กลุ่มปุ่มโซเชียล */
+.social-links {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 20px;
+}
+
+/* ปุ่มโซเชียล */
+.social-links a {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 26px;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 50px;
+    text-decoration: none;
+    color: #fff;
+    font-weight: 600;
+    box-shadow: 0 0 12px #00f2fe;
+    transition: 0.3s ease;
+}
+
+.social-links a:hover {
+    transform: scale(1.05);
+    background: linear-gradient(135deg, #00f2fe, #4facfe);
+    box-shadow: 0 0 25px #00f2fe;
+    color: #000;
+}
+
+/* ไอคอน */
+.social-links img {
+    width: 30px;
+    height: 30px;
+    filter: drop-shadow(0 0 4px #00f2fe);
+    transition: transform 0.2s ease;
+}
+
+.social-links a:hover img {
+    transform: scale(1.1);
+}
+
+@media (max-width: 768px) {
+  /* Navbar */
+    .contact-container {
+    padding: 20px;
+    border-radius: 15px;
+  }
+
+  .contact-container h1 {
+    font-size: 1.8rem;
+  }
+
+  .contact-container p {
+    font-size: 1rem;
+  }
+
+  .social-links a {
+    padding: 10px 16px;
+    font-size: 0.95rem;
+  }
+
+  .social-links img {
+    width: 24px;
+    height: 24px;
+  }
+
+
+}
+

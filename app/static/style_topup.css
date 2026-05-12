@@ -1,0 +1,195 @@
+body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Poppins', sans-serif;
+    background-color: #000000;
+    background-attachment: fixed;
+    color: #fff;
+}
+
+.topup-container {
+    max-width: 600px;
+    margin: 80px auto;
+    padding: 40px;
+    text-align: center;
+    position: relative;
+    overflow: visible;
+}
+
+.topup-container h1 {
+    font-size: 3rem;
+    text-shadow: 0 0 15px #00f2fe, 0 0 30px #00f2fe;
+    color: #ffffff;
+}
+
+.topup-container p {
+    margin-top: 15px;
+    margin-bottom: 30px;
+    font-size: 1.2rem;
+    color: #ccc;
+}
+
+.form-group {
+    margin-bottom: 35px;
+    text-align: left;
+}
+
+.form-group label {
+    font-weight: 600;
+    display: block;
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+    color: #66fcf1;
+}
+
+input {
+    width: 100%;
+    padding: 15px;
+    border-radius: 12px;
+    border: none;
+    font-size: 1.1rem;
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(0,255,255,0.2);
+    backdrop-filter: blur(10px);
+    box-sizing: border-box;
+}
+
+input::placeholder {
+    color: #aaa;
+}
+
+.btn-main {
+    padding: 15px 40px;
+    border: none;
+    border-radius: 50px;
+    background: linear-gradient(135deg, #00f2fe, #4facfe);
+    color: #fff;
+    font-weight: 700;
+    font-size: 1.2rem;
+    cursor: pointer;
+    box-shadow: 0 0 20px #00f2fe;
+    transition: 0.3s;
+}
+
+.btn-main:hover {
+    transform: scale(1.05);
+    box-shadow: 0 0 40px #00f2fe;
+}
+
+.payment-info {
+    margin-top: 40px;
+}
+
+.payment-info img {
+    width: 250px;
+    margin: 20px 0;
+    border-radius: 20px;
+    box-shadow: 0 0 25px rgba(0,255,255,0.25);
+}
+
+/* option dropdown แบบปกติ */
+option {
+    background: #0a0f24;
+    color: #fff;
+    font-size: 1.1rem;
+    padding: 10px;
+}
+
+/* Custom Dropdown */
+.custom-dropdown {
+    position: relative;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    backdrop-filter: blur(15px);
+    box-shadow: 0 0 15px rgba(0, 242, 254, 0.2);
+    font-weight: 600;
+    font-size: 1.1rem;
+    cursor: pointer;
+    user-select: none;
+    z-index: 1000;
+}
+
+.custom-dropdown:hover {
+    box-shadow: 0 0 25px rgba(0, 242, 254, 0.5);
+}
+
+.custom-dropdown .selected {
+    padding: 15px 20px;
+    color: #fff;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.custom-dropdown .dropdown-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: rgba(10, 15, 36, 0.98);
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.3s ease;
+    z-index: 1000;
+}
+
+.custom-dropdown.active .dropdown-list {
+    opacity: 1;
+    visibility: visible;
+}
+
+.custom-dropdown .dropdown-list div {
+    padding: 15px 20px;
+    color: #fff;
+    transition: 0.2s;
+    font-weight: 500;
+}
+
+.custom-dropdown .dropdown-list div:hover {
+    background: linear-gradient(135deg, #00f2fe, #4facfe);
+    box-shadow: 0 0 20px #00f2fe;
+    color: #141E30;
+}
+
+.hidden {
+    display: none;
+}
+
+@media (max-width: 480px) {
+  .topup-container {
+    padding: 20px;
+    margin: 40px 15px;
+  }
+
+  .topup-container h1 {
+    font-size: 2rem;
+  }
+
+  .topup-container p {
+    font-size: 1rem;
+  }
+
+  .form-group label {
+    font-size: 1rem;
+  }
+
+  input {
+    font-size: 1rem;
+    padding: 12px;
+  }
+
+  .btn-main {
+    font-size: 1rem;
+    padding: 12px 30px;
+  }
+
+  .payment-info img {
+    width: 100%;
+    max-width: 250px;
+  }
+}
+

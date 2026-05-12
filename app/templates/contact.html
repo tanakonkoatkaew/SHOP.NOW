@@ -1,0 +1,29 @@
+{% extends 'base.html' %}
+
+{% block style %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style_contact.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="contact-wrapper">
+  <div class="contact-container">
+      <h1>ติดต่อเรา</h1>
+      <p>คุณสามารถติดต่อผ่านช่องทางโซเชียลของเราได้ที่นี่</p>
+
+      <div class="social-links">
+          <a href="" target="_blank">
+              <img src="{{ url_for('static', filename='icons/facebook.png') }}" alt="Facebook"> Facebook
+          </a>
+          <a href="" target="_blank">
+              <img src="{{ url_for('static', filename='icons/line.png') }}" alt="LINE"> LINE
+          </a>
+          <a href="" target="_blank">
+              <img src="{{ url_for('static', filename='icons/ig.png') }}" alt="Instagram"> Instagram
+          </a>
+          <a href="" target="_blank">
+              <img src="{{ url_for('static', filename='icons/discord.png') }}" alt="Discord"> Discord
+          </a>
+      </div>
+  </div>
+</div>
+{% endblock %}

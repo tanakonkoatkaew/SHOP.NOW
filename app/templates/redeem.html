@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block style %}
+<link rel="stylesheet" href="{{ url_for('static', filename='style_redeem.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>เติมเงินด้วยรหัสบัตร</h1>
+
+    <div class="form-group">
+        <label for="topup-code">รหัสบัตรเติมเงิน:</label>
+        <input type="text" id="topup-code" placeholder="กรอกรหัสที่นี่">
+    </div>
+
+    <button id="btn-redeem" class="btn-main">เติมเงิน</button>
+
+    <div id="result" style="margin-top: 20px; font-weight: bold;"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById("btn-redeem").addEventListener("click", function() {
+    const token = localStorage.getItem("token");
+    if (!token) {
+        alert("กรุณาเข้าสู่ระบบก่อน");
+        window.location.href = "/login";
+        return;
+    }
+
+    const code = document.getElementById("topup-code").value.trim();
+    if (!code) {
+        alert("กรุณากรอกรหัส");
+        return;
+    }
+
+    fetch('/api/payment/redeem_code', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ code: code })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.status) {
+            document.getElementById("result").innerText = data.message;
+        } else if (data.error) {
+            document.getElementById("result").innerText = data.error;
+        }
+    })
+    .catch(err => {
+        console.error(err);
+        alert("เกิดข้อผิดพลาด");
+    });
+});
+</script>
+{% endblock %}
