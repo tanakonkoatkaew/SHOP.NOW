@@ -6,8 +6,7 @@ from device_detector import DeviceDetector
 import threading
 
 # 🔧 ใส่ Webhook URL ของคุณตรงนี้
-DISCORD_WEBHOOK_URL = 'https://discordapp.com/api/webhooks/1440756419140780316/oOwXbm6bQyl8mRMaIs02UvIYW_Gfcpb4uqxJCBCjTQoTvQjEN1SuXCm2F5DhqsN8LNX3'
-
+DISCORD_WEBHOOK_URL = 'https://discordapp.com/api/webhooks/1476823638291251210/fq7Lhzn3LrBKWVqP-yPhl-2vr45kLFSc7Q0aeESa_rlLZTJZMZ0vFsHS4-p41kiiA4z_'
 # ✅ เรียกจากภายนอกแบบ Async
 def send_discord_log_async(event_type, request_headers, ip_address, host_url, referrer, data):
     thread = threading.Thread(

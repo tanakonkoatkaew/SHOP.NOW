@@ -1,0 +1,101 @@
+const BASE = '/api'
+
+function getToken() {
+  return localStorage.getItem('token')
+}
+
+function headers(extra = {}) {
+  const h = { 'Content-Type': 'application/json', ...extra }
+  const t = getToken()
+  if (t) h['Authorization'] = `Bearer ${t}`
+  return h
+}
+
+async function request(method, path, body) {
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers: headers(),
+    body: body ? JSON.stringify(body) : undefined,
+  })
+  const data = await res.json().catch(() => ({}))
+  return { ok: res.ok, status: res.status, data }
+}
+
+export const api = {
+  get:    (path)       => request('GET',    path),
+  post:   (path, body) => request('POST',   path, body),
+  put:    (path, body) => request('PUT',    path, body),
+  delete: (path)       => request('DELETE', path),
+
+  // Auth
+  login:         (body) => request('POST', '/auth/login',    body),
+  register:      (body) => request('POST', '/auth/register', body),
+  me:            ()     => request('GET',  '/auth/me/user'),
+  profile:       ()     => request('GET',  '/auth/me/profile'),
+  updateProfile: (body) => request('PUT',  '/auth/me/profile', body),
+
+  // Products
+  products:      ()         => request('GET', '/products/product'),
+  productDetail: (cate, id) => request('GET', `/products/product/${cate}/${id}`),
+
+  // Orders
+  purchaseLogs: () => request('GET', '/products/me/logs/product/0/50'),
+  buyProduct:   (id, body) => request('POST', `/products/order/product/${id}`, body),
+  checkCoupon:  (code) => request('GET', `/products/checkCoupon/${code}`),
+
+  // Payment
+  topupQR:     (body) => request('POST', '/payment/qr', body),
+  redeemCode:  (code) => request('POST', '/payment/redeem-code', { code }),
+  topupLogs:   ()     => request('GET',  '/payment/me/topup/logs'),
+  uploadSlip: (ref, file) => {
+    const form = new FormData()
+    form.append('slip', file)
+    form.append('ref_code', ref)
+    return fetch(`${BASE}/payment/upload-slip`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+      body: form,
+    }).then(r => r.json())
+  },
+
+  // Admin
+  admin: {
+    stats:         ()        => request('GET',    '/admin/stats'),
+    slips:         (status)  => request('GET',    `/admin/slips${status ? `?status=${status}` : ''}`),
+    approveSlip:   (ref)     => request('POST',   `/admin/slips/${ref}/approve`),
+    rejectSlip:    (ref, reason) => request('POST', `/admin/slips/${ref}/reject`, { reason }),
+    uploadProductImage: (file) => {
+      const form = new FormData()
+      form.append('image', file)
+      return fetch(`${BASE}/admin/products/upload-image`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: form,
+      }).then(r => r.json())
+    },
+    products:      ()        => request('GET',    '/admin/products'),
+    createProduct: (data)    => request('POST',   '/admin/products', data),
+    updateProduct: (id, data)=> request('PUT',    `/admin/products/${id}`, data),
+    deleteProduct: (id)      => request('DELETE', `/admin/products/${id}`),
+    users:         ()        => request('GET',    '/admin/users'),
+    updateUser:    (id, data)=> request('PUT',    `/admin/users/${id}`, data),
+    deleteUser:    (id)      => request('DELETE', `/admin/users/${id}`),
+    truemoney:          (status) => request('GET',  `/admin/truemoney${status ? `?status=${status}` : ''}`),
+    approveTruemoney:   (id, amount) => request('POST', `/admin/truemoney/${id}/approve`, { amount }),
+    rejectTruemoney:    (id, reason) => request('POST', `/admin/truemoney/${id}/reject`,  { reason }),
+
+    // Chat (admin side)
+    chatSessions:       ()           => request('GET',    '/admin/chat/sessions'),
+    chatMessages:       (sessionId)  => request('GET',    `/admin/chat/sessions/${sessionId}/messages`),
+    chatReply:          (sessionId, text) => request('POST', `/admin/chat/sessions/${sessionId}/reply`, { text }),
+    chatDelete:         (sessionId)  => request('DELETE', `/admin/chat/sessions/${sessionId}`),
+  },
+
+  // Chat (user side)
+  chat: {
+    faq:        ()       => request('GET',  '/chat/faq'),
+    messages:   ()       => request('GET',  '/chat/messages'),
+    send:       (text, opts = {}) => request('POST', '/chat/send', { text, ...opts }),
+    faqAnswer:  (id)     => request('POST', '/chat/faq-answer', { id }),
+  },
+}

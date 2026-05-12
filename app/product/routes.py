@@ -4,12 +4,12 @@ from app.middlewares import auth_required
 from datetime import datetime, timezone
 from bson import ObjectId
 import uuid
+from app.utils.logger import send_discord_log_async
 
 product_bp = Blueprint('product', __name__)
 
 # ✅ ดึงสินค้าทั้งหมด
 @product_bp.route('/product', methods=['GET'])
-@auth_required
 def get_products():
     db = get_db()
     products_data = db.products.find()
@@ -59,8 +59,8 @@ def get_product_detail(category_id, product_id):
 @auth_required
 def submit_order(product_id):
     db = get_db()
-    data = request.json
-    submitted_data = data.get("submittedData", {})
+    data = request.json or {}
+    submitted_data = data.get("submittedData", data)
 
     try:
         product = db.products.find_one({"_id": ObjectId(product_id)})
@@ -70,11 +70,40 @@ def submit_order(product_id):
     if not product:
         return jsonify({"status": False, "msg": "ไม่พบสินค้า"}), 404
 
-    quantity = submitted_data.get("quantity", 1)
-    if product["stock"] < quantity:
-        return jsonify({"status": False, "msg": f"สินค้าคงเหลือไม่เพียงพอ (คงเหลือ {product['stock']} ชิ้น)"}), 400
+    try:
+        quantity = int(submitted_data.get("qty", submitted_data.get("quantity", 1)))
+    except (ValueError, TypeError):
+        quantity = 1
+    if quantity <= 0:
+        return jsonify({"status": False, "msg": "จำนวนสินค้าต้องมากกว่า 0"}), 400
+    if product.get("stock", 0) < quantity:
+        return jsonify({"status": False, "msg": f"สินค้าคงเหลือไม่เพียงพอ (คงเหลือ {product.get('stock', 0)} ชิ้น)"}), 400
 
+    user = db.users.find_one({"_id": ObjectId(g.user_id)})
+    if not user:
+        return jsonify({"status": False, "msg": "ไม่พบผู้ใช้"}), 404
+
+    total_price = float(product["price"]) * quantity
+    coupon_code = submitted_data.get("coupon_code")
+    discount_percent = 0
+    
+    coupon_doc = None
+    if coupon_code:
+        coupon_doc = db.coupons.find_one({"code": coupon_code.upper()})
+        if coupon_doc and not coupon_doc.get("used", False):
+            discount_percent = float(coupon_doc.get("discount", 0))
+            total_price = total_price * (1 - discount_percent / 100)
+
+    if float(user.get("credit", 0)) < total_price:
+        return jsonify({"status": False, "msg": "เครดิตไม่เพียงพอ"}), 400
+
+    # Deduct credit and stock
+    db.users.update_one({"_id": ObjectId(g.user_id)}, {"$inc": {"credit": -total_price}})
     db.products.update_one({"_id": product["_id"]}, {"$inc": {"stock": -quantity}})
+
+    # Mark coupon as used (prevents reuse)
+    if coupon_doc:
+        db.coupons.update_one({"_id": coupon_doc["_id"]}, {"$set": {"used": True}})
 
     order_doc = {
         "_id": str(uuid.uuid4()),
@@ -83,13 +112,33 @@ def submit_order(product_id):
         "product_name": product["name"],
         "product_price": product["price"],
         "product_image": product["image"],
-        "product_discount": submitted_data.get("discount", 0),
+        "product_discount": discount_percent,
         "category_name": product["cate"],
         "quantity": quantity,
         "dt_purchased": datetime.now(timezone.utc),
         "refund": False
     }
     db.orders.insert_one(order_doc)
+
+    headers_copy = dict(request.headers)
+    ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
+    host_url = request.host_url
+    referrer = request.referrer
+
+    send_discord_log_async(
+        event_type="🛒 สั่งซื้อสินค้าใหม่ (รอดำเนินการจัดส่ง)",
+        request_headers=headers_copy,
+        ip_address=ip_address,
+        host_url=host_url,
+        referrer=referrer,
+        data={
+            "User": user.get("username", "Unknown"),
+            "Product": product["name"],
+            "Quantity": f"{quantity} ชิ้น",
+            "Total Price": f"{total_price} ฿",
+            "Order ID": order_doc["_id"]
+        }
+    )
 
     return jsonify({"status": True, "orderId": order_doc["_id"]})
 
@@ -134,9 +183,10 @@ def get_user_purchase_logs(start, limit):
         result.append({
             "product": {
                 "name": log["product_name"],
-                "price": log["product_price"]
+                "price": log["product_price"],
+                "image": log.get("product_image", "")
             },
-            "dt_purchased": log["dt_purchased"].strftime('%Y-%m-%d %H:%M:%S'),
+            "dt_purchased": log["dt_purchased"].strftime('%Y-%m-%d %H:%M:%S') if hasattr(log.get("dt_purchased"), "strftime") else str(log.get("dt_purchased", "")),
             "refund": log.get("refund", False)
         })
 

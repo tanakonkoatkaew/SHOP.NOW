@@ -123,9 +123,42 @@ def get_profile():
             "email": user.get("email", ""),
             "phone": user.get("phone", ""),
             "credit": float(user.get("credit", 0)),
-            "reward": float(user.get("reward", 0))
+            "reward": float(user.get("reward", 0)),
+            "avatar": user.get("avatar", ""),
+            "discord_id": user.get("discord_id", ""),
+            "line_id": user.get("line_id", "")
         }
     })
+
+# ✅ UPDATE PROFILE
+@auth_bp.route('/me/profile', methods=['PUT'])
+@auth_required
+def update_profile():
+    db = get_db()
+    data = request.json or {}
+    
+    update_fields = {}
+    
+    if "username" in data and data["username"].strip():
+        # Check if new username is already taken by someone else
+        existing = db.users.find_one({"username": data["username"].strip(), "_id": {"$ne": ObjectId(g.user_id)}})
+        if existing:
+            return jsonify({"status": False, "message": "Username นี้ถูกใช้งานแล้ว"}), 400
+        update_fields["username"] = data["username"].strip()
+        
+    if "phone" in data:
+        update_fields["phone"] = data["phone"].strip()
+    if "avatar" in data:
+        update_fields["avatar"] = data["avatar"].strip()
+    if "discord_id" in data:
+        update_fields["discord_id"] = data["discord_id"].strip()
+    if "line_id" in data:
+        update_fields["line_id"] = data["line_id"].strip()
+        
+    if update_fields:
+        db.users.update_one({"_id": ObjectId(g.user_id)}, {"$set": update_fields})
+        
+    return jsonify({"status": True, "message": "อัพเดทโปรไฟล์สำเร็จ"})
 
 
 # ✅ GET PROFILE ย่อ
@@ -145,6 +178,7 @@ def get_user_basic():
         "status": True,
         "user": {
             "username": user["username"],
-            "credit": float(user.get("credit", 0.0))
+            "credit":   float(user.get("credit", 0.0)),
+            "is_admin": bool(user.get("is_admin", False)),
         }
     })

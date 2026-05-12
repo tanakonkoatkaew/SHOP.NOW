@@ -6,9 +6,7 @@ werkzeug
 pyotp
 python-dotenv
 requests
-device-detector
-pytesseract
-google-cloud-vision
 Pillow
 Flask-JWT-Extended
 bcrypt
+gunicorn

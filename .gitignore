@@ -1,8 +1,13 @@
 .env
 __pycache__/
 *.pyc
+*.pyo
 venv/
 env/
 .venv/
 instance/
 ocr-payment.json
+*.json.secret
+node_modules/
+app/static/uploads/
+app/static/data/
