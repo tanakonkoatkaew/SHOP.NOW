@@ -56,7 +56,8 @@ export default function Profile() {
     { icon: User,  label: 'Username', key: 'username', value: profile?.username },
     { icon: Mail,  label: 'อีเมล',    key: 'email',    value: profile?.email, readonly: true },
     { icon: Phone, label: 'โทรศัพท์', key: 'phone',    value: profile?.phone || '—' },
-    { icon: MessageSquare, label: 'Discord ID', key: 'discord_id', value: profile?.discord_id || '—' },
+    { icon: MessageSquare, label: 'Discord Webhook URL', key: 'discord_id', value: profile?.discord_id || '—' },
+
     { icon: LinkIcon, label: 'LINE ID', key: 'line_id', value: profile?.line_id || '—' },
   ]
 

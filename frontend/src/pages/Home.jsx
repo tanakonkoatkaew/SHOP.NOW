@@ -6,28 +6,28 @@ import { api } from '../services/api'
 import ProductCard from '../components/ProductCard'
 
 const stats = [
-  { num: '200+',    label: 'สินค้าดิจิทัล' },
-  { num: '2,000+',  label: 'ลูกค้าที่พอใจ' },
-  { num: '4.8★',    label: 'คะแนนเฉลี่ย' },
+  { num: '200+', label: 'สินค้าดิจิทัล' },
+  { num: '2,000+', label: 'ลูกค้าที่พอใจ' },
+  { num: '4.8★', label: 'คะแนนเฉลี่ย' },
 ]
 
 const features = [
-  { icon: Zap,         title: 'รับสินค้าทันที',  desc: 'รับสินค้าดิจิทัลทันทีหลังชำระเงิน' },
-  { icon: ShieldCheck, title: 'ปลอดภัย 100%',     desc: 'ระบบชำระเงินมาตรฐาน มีประกันทุกออเดอร์' },
-  { icon: Headphones,  title: 'ซัพพอร์ต 24/7',    desc: 'ทีมงานพร้อมช่วยเหลือตลอดเวลา' },
-  { icon: Tag,         title: 'ราคาดีที่สุด',     desc: 'รับประกันราคาถูกที่สุดหรือคืนเงิน' },
+  { icon: Zap, title: 'รับสินค้าทันที', desc: 'รับสินค้าดิจิทัลทันทีหลังชำระเงิน' },
+  { icon: ShieldCheck, title: 'ปลอดภัย 100%', desc: 'ระบบชำระเงินมาตรฐาน มีประกันทุกออเดอร์' },
+  { icon: Headphones, title: 'ซัพพอร์ต 24/7', desc: 'ทีมงานพร้อมช่วยเหลือตลอดเวลา' },
+  { icon: Tag, title: 'ราคาดีที่สุด', desc: 'รับประกันราคาถูกที่สุดหรือคืนเงิน' },
 ]
 
 const testimonials = [
-  { name: 'ศรัณย์ ก.', rating: 5, text: 'ได้รับสินค้าเร็วมากเลย ประทับใจมาก จะกลับมาซื้ออีกแน่นอน!' },
-  { name: 'มนัส ว.',   rating: 5, text: 'ราคาดีกว่าที่อื่นเยอะ คุณภาพสินค้าก็ดีด้วย แนะนำเลย' },
-  { name: 'ปณิธาน ส.', rating: 4, text: 'บริการดีมาก ตอบคำถามรวดเร็ว สินค้าถูกกว่าเว็บอื่นชัดเจน' },
+  { name: 'USER 1', rating: 5, text: 'Review Text' },
+  { name: 'USER 2', rating: 5, text: 'Review Text' },
+  { name: 'USER 3', rating: 4, text: 'Review Text' },
 ]
 
 function StarRow({ n }) {
   return (
     <div className="flex gap-0.5">
-      {[1,2,3,4,5].map(i => (
+      {[1, 2, 3, 4, 5].map(i => (
         <svg key={i} width="14" height="14" viewBox="0 0 24 24" fill={i <= n ? '#FFC633' : '#e5e7eb'}>
           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
         </svg>
@@ -64,7 +64,7 @@ export default function Home() {
               <span className="relative inline-block">
                 ที่ใช่สำหรับคุณ
                 <svg className="absolute -bottom-1 left-0 w-full" height="8" viewBox="0 0 300 8" preserveAspectRatio="none">
-                  <path d="M0 6 Q75 0 150 6 Q225 12 300 6" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round"/>
+                  <path d="M0 6 Q75 0 150 6 Q225 12 300 6" stroke="black" strokeWidth="2.5" fill="none" strokeLinecap="round" />
                 </svg>
               </span>
             </h1>
@@ -109,7 +109,7 @@ export default function Home() {
                   <p className="text-white font-black text-xl uppercase tracking-wider">Digital Store</p>
                   <p className="text-gray-400 text-sm mt-2">Premium Products</p>
                   <div className="mt-6 flex justify-center gap-2">
-                    {['🎯','💻','📱','🔑'].map(e => (
+                    {['🎯', '💻', '📱', '🔑'].map(e => (
                       <div key={e} className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-lg">{e}</div>
                     ))}
                   </div>
@@ -176,9 +176,9 @@ export default function Home() {
           <h2 className="text-4xl font-black text-black uppercase tracking-tight mb-8">หมวดหมู่สินค้า</h2>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
             {[
-              { label: 'เกม',       emoji: '🎮', value: 'game',     bg: 'bg-white' },
+              { label: 'เกม', emoji: '🎮', value: 'game', bg: 'bg-white' },
               { label: 'ซอฟต์แวร์', emoji: '💻', value: 'software', bg: 'bg-black text-white' },
-              { label: 'เติมเงิน',  emoji: '💳', value: 'topup',    bg: 'bg-white' },
+              { label: 'เติมเงิน', emoji: '💳', value: 'topup', bg: 'bg-white' },
             ].map(c => (
               <Link
                 key={c.value}

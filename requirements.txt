@@ -10,3 +10,4 @@ Pillow
 Flask-JWT-Extended
 bcrypt
 gunicorn
+google-cloud-vision

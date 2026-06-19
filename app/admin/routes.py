@@ -326,3 +326,32 @@ def delete_user(user_id):
 
     db.users.delete_one({"_id": oid})
     return jsonify({"status": True, "message": "ลบผู้ใช้สำเร็จ"})
+
+
+# ─── USER ORDERS ─────────────────────────────────────────────────────────────
+
+@admin_bp.route('/users/<user_id>/orders', methods=['GET'])
+@admin_required
+def list_user_orders(user_id):
+    db = get_db()
+    orders = db.orders.find({"user_id": user_id}).sort("dt_purchased", -1)
+    results = []
+    for o in orders:
+        purchased_at = o.get("dt_purchased")
+        if purchased_at and hasattr(purchased_at, 'strftime'):
+            purchased_at = purchased_at.strftime('%Y-%m-%d %H:%M:%S')
+        elif purchased_at:
+            purchased_at = str(purchased_at)
+        else:
+            purchased_at = ""
+            
+        results.append({
+            "id": o.get("_id"),
+            "product_name": o.get("product_name", ""),
+            "product_price": o.get("product_price", 0),
+            "product_image": o.get("product_image", ""),
+            "quantity": o.get("quantity", 1),
+            "dt_purchased": purchased_at,
+            "refund": o.get("refund", False)
+        })
+    return jsonify({"status": True, "results": results})

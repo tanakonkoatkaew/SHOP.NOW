@@ -67,7 +67,81 @@ def create_qr():
     })
 
 
+def crc16_ccitt(data: bytes) -> int:
+    crc = 0xFFFF
+    for byte in data:
+        crc ^= (byte << 8)
+        for _ in range(8):
+            if (crc & 0x8000):
+                crc = (crc << 1) ^ 0x1021
+            else:
+                crc = crc << 1
+            crc &= 0xFFFF
+    return crc
+
+def generate_promptpay_payload(promptpay_id, amount):
+    import re
+    promptpay_id = re.sub(r'[^0-9]', '', str(promptpay_id))
+    
+    if len(promptpay_id) == 10 and promptpay_id.startswith('0'):
+        target = "0066" + promptpay_id[1:]
+        merchant_info = f"0016A00000067701011101{len(target):02d}{target}"
+    elif len(promptpay_id) == 13:
+        merchant_info = f"0016A00000067701011102{len(promptpay_id):02d}{promptpay_id}"
+    elif len(promptpay_id) == 15:
+        merchant_info = f"0016A00000067701011103{len(promptpay_id):02d}{promptpay_id}"
+    else:
+        if len(promptpay_id) <= 10:
+            target = "0066" + promptpay_id.lstrip('0')
+            merchant_info = f"0016A00000067701011101{len(target):02d}{target}"
+        else:
+            merchant_info = f"0016A00000067701011102{len(promptpay_id):02d}{promptpay_id}"
+
+    payload = "000201"
+    payload += "010212"
+    payload += f"29{len(merchant_info):02d}{merchant_info}"
+    payload += "5303764"
+    
+    amount_str = f"{float(amount):.2f}"
+    payload += f"54{len(amount_str):02d}{amount_str}"
+    payload += "5802TH"
+    payload += "6304"
+    
+    crc = crc16_ccitt(payload.encode('ascii'))
+    payload += f"{crc:04X}"
+    return payload
+
+@payment_bp.route('/promptpay-qr', methods=['GET'])
+@auth_required
+def get_promptpay_qr():
+    amount = request.args.get('amount')
+    if not amount:
+        return jsonify({"status": False, "message": "กรุณาระบุจำนวนเงิน"}), 400
+    try:
+        amount_val = float(amount)
+        if amount_val <= 0:
+            raise ValueError()
+    except ValueError:
+        return jsonify({"status": False, "message": "จำนวนเงินไม่ถูกต้อง"}), 400
+        
+    promptpay_id = os.getenv("PROMPTPAY_ID", "").strip()
+    if not promptpay_id:
+        return jsonify({"status": False, "message": "ระบบยังไม่ได้เปิดใช้งาน PromptPay ID ในการรับเงิน"}), 400
+        
+    try:
+        qr_payload = generate_promptpay_payload(promptpay_id, amount_val)
+        qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={qr_payload}"
+        return jsonify({
+            "status": True,
+            "qr_payload": qr_payload,
+            "qr_image_url": qr_image_url
+        })
+    except Exception as e:
+        return jsonify({"status": False, "message": f"เกิดข้อผิดพลาดในการสร้าง QR Code: {str(e)}"}), 500
+
+
 # ─── UPLOAD SLIP (save image → wait for admin approval) ──────────────────────
+
 
 @payment_bp.route('/upload-slip', methods=['POST'])
 @auth_required
@@ -97,17 +171,63 @@ def upload_slip():
 
     slip_image_url = f"/static/uploads/slips/{filename}"
 
-    db.pending_qr_payments.update_one({"_id": ref_code}, {"$set": {
-        "status":         "pending_review",
-        "slip_uploaded":  True,
-        "slip_image_url": slip_image_url,
-        "uploaded_at":    datetime.now(timezone.utc),
-    }})
-
-    return jsonify({
-        "status":  True,
-        "message": "ส่งสลิปสำเร็จ กรุณารอแอดมินตรวจสอบ (ปกติภายใน 5-15 นาที)",
-    })
+    # Perform automatic slip verification using Google Cloud Vision OCR
+    from app.services.payment_service import verify_slip_ocr
+    
+    ocr_result = verify_slip_ocr(save_path, payment["amount"])
+    
+    if ocr_result["success"]:
+        # Auto-approve: Add credit to user and set payment status to approved
+        db.users.update_one(
+            {"_id": payment["user_id"]},
+            {"$inc": {"credit": payment["amount"]}}
+        )
+        db.pending_qr_payments.update_one({"_id": ref_code}, {"$set": {
+            "status":         "approved",
+            "credited":       True,
+            "slip_uploaded":  True,
+            "slip_image_url": slip_image_url,
+            "uploaded_at":    datetime.now(timezone.utc),
+            "approved_at":    datetime.now(timezone.utc),
+            "transaction_id": ocr_result.get("transaction_id"),
+            "auto_verified":  True,
+        }})
+        return jsonify({
+            "status":        True,
+            "auto_verified": True,
+            "message":       f"เติมเงินสำเร็จ {payment['amount']:.2f} ฿ (ระบบตรวจสอบและเติมเงินอัตโนมัติสำเร็จ)",
+        })
+    else:
+        # If it is a duplicate slip, reject it immediately to prevent double spending
+        if ocr_result.get("is_duplicate"):
+            db.pending_qr_payments.update_one({"_id": ref_code}, {"$set": {
+                "status":         "rejected",
+                "slip_uploaded":  True,
+                "slip_image_url": slip_image_url,
+                "uploaded_at":    datetime.now(timezone.utc),
+                "rejected_at":    datetime.now(timezone.utc),
+                "reject_reason":  ocr_result.get("message", "สลิปนี้ถูกใช้งานไปแล้ว"),
+                "transaction_id": ocr_result.get("transaction_id"),
+            }})
+            return jsonify({
+                "status":  False,
+                "message": ocr_result.get("message", "สลิปนี้ถูกใช้งานยืนยันชำระเงินไปแล้วในระบบ"),
+            }), 400
+        else:
+            # General mismatch or OCR read error -> Fallback to manual admin review
+            db.pending_qr_payments.update_one({"_id": ref_code}, {"$set": {
+                "status":         "pending_review",
+                "slip_uploaded":  True,
+                "slip_image_url": slip_image_url,
+                "uploaded_at":    datetime.now(timezone.utc),
+                "transaction_id": ocr_result.get("transaction_id"),
+                "ocr_failed_reason": ocr_result.get("message"),
+            }})
+            return jsonify({
+                "status":        True,
+                "auto_verified": False,
+                "message":       "ส่งสลิปสำเร็จ กำลังรอแอดมินตรวจสอบแบบปกติ (ไม่สามารถตรวจสลิปแบบอัตโนมัติได้)",
+            })
 
 
 # ─── TOPUP LOGS ──────────────────────────────────────────────────────────────

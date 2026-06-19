@@ -140,6 +140,102 @@ def submit_order(product_id):
         }
     )
 
+    # Send delivery notification to user (Google -> Gmail, Discord/Webhook -> Webhook)
+    user_discord_webhook = user.get("discord_id", "").strip()
+    user_email = user.get("email", "").strip()
+    is_google_user = bool(user.get("google_user_id"))
+
+    if is_google_user and user_email:
+        try:
+            key_code = str(uuid.uuid4()).upper()
+            subject = f"🎉 จัดส่งสินค้าสำเร็จ! - {product['name']} (ShopNow)"
+            
+            body_html = f"""
+            <html>
+            <body style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f8fafc; padding: 20px; color: #1e293b;">
+                <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 30px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);">
+                    <div style="text-align: center; margin-bottom: 25px;">
+                        <span style="font-size: 40px;">🎉</span>
+                        <h2 style="color: #f59e0b; margin-top: 10px; font-weight: 800; font-family: sans-serif;">จัดส่งสินค้าสำเร็จ!</h2>
+                        <p style="color: #64748b; font-size: 14px;">ขอบคุณสำหรับการสั่งซื้อสินค้าจาก ShopNow</p>
+                    </div>
+                    <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;">
+                    <table style="width: 100%; font-size: 15px; border-collapse: collapse; font-family: sans-serif;">
+                        <tr>
+                            <td style="padding: 8px 0; color: #64748b; font-weight: 600;">🛒 สินค้าที่สั่งซื้อ:</td>
+                            <td style="padding: 8px 0; text-align: right; font-weight: 700; color: #0f172a;">{product['name']}</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #64748b; font-weight: 600;">📦 จำนวน:</td>
+                            <td style="padding: 8px 0; text-align: right; font-weight: 700; color: #0f172a;">{quantity} ชิ้น</td>
+                        </tr>
+                        <tr>
+                            <td style="padding: 8px 0; color: #64748b; font-weight: 600;">💰 ราคารวม:</td>
+                            <td style="padding: 8px 0; text-align: right; font-weight: 700; color: #f59e0b;">{total_price} ฿</td>
+                        </tr>
+                    </table>
+                    <div style="margin-top: 25px; background-color: #fef3c7; border: 1px solid #fde68a; border-radius: 8px; padding: 15px; text-align: center; font-family: sans-serif;">
+                        <div style="font-size: 12px; color: #b45309; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px;">🔑 รหัสจัดส่งสินค้า (Key/Code)</div>
+                        <div style="font-family: monospace; font-size: 18px; color: #78350f; font-weight: bold; letter-spacing: 1px;">{key_code}</div>
+                    </div>
+                    <div style="margin-top: 25px; font-size: 12px; color: #94a3b8; line-height: 1.5; text-align: center; font-family: sans-serif;">
+                        เลขที่ใบเสร็จ: <code>{order_doc['_id']}</code><br>
+                        วันเวลาสั่งซื้อ: {datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S UTC")}
+                    </div>
+                    <div style="margin-top: 30px; text-align: center; font-size: 13px; color: #64748b; font-weight: 600; font-family: sans-serif;">
+                        ขอบคุณที่ใช้บริการ ShopNow! ❤️
+                    </div>
+                </div>
+            </body>
+            </html>
+            """
+            
+            body_text = f"""
+            จัดส่งสินค้าสำเร็จ! (ShopNow)
+            ========================
+            🛒 สินค้าที่สั่งซื้อ: {product['name']}
+            📦 จำนวน: {quantity} ชิ้น
+            💰 ราคารวม: {total_price} ฿
+            🔑 รหัสจัดส่งสินค้า (Key/Code): {key_code}
+            
+            เลขที่ใบเสร็จ: {order_doc['_id']}
+            วันเวลาสั่งซื้อ: {datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S UTC")}
+            
+            ขอบคุณที่ใช้บริการ ShopNow! ❤️
+            """
+            from app.utils.email_sender import send_email_async
+            send_email_async(user_email, subject, body_html, body_text)
+        except Exception as e:
+            print("[❌] Failed to initiate email sending:", e)
+
+    elif user_discord_webhook and (user_discord_webhook.startswith("https://discord.com/api/webhooks/") or user_discord_webhook.startswith("https://discordapp.com/api/webhooks/")):
+        try:
+            personal_embed = {
+                "title": "🎉 จัดส่งสินค้าสำเร็จ! (ShopNow)",
+                "color": 0xFFB900,
+                "fields": [
+                    {"name": "🛒 สินค้าที่สั่งซื้อ", "value": product["name"], "inline": False},
+                    {"name": "📦 จำนวน", "value": f"{quantity} ชิ้น", "inline": True},
+                    {"name": "💰 ราคารวม", "value": f"{total_price} ฿", "inline": True},
+                    {"name": "🔑 รหัสจัดส่งสินค้า (Key/Code)", "value": f"```{str(uuid.uuid4()).upper()}```", "inline": False},
+                    {"name": "📝 เลขที่ใบเสร็จ", "value": f"`{order_doc['_id']}`", "inline": False},
+                    {"name": "📅 วันเวลาสั่งซื้อ", "value": datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S"), "inline": False}
+                ],
+                "footer": {"text": "ขอบคุณที่ใช้บริการ ShopNow! ❤️"}
+            }
+            
+            def send_personal_discord():
+                import requests as http_requests
+                try:
+                    http_requests.post(user_discord_webhook, json={"embeds": [personal_embed]}, timeout=5)
+                except Exception as e:
+                    print("[❌] User Personal Discord Webhook Failed to post:", e)
+            
+            import threading
+            threading.Thread(target=send_personal_discord).start()
+        except Exception as e:
+            print("[❌] User Personal Discord Webhook Failed to start thread:", e)
+
     return jsonify({"status": True, "orderId": order_doc["_id"]})
 
 

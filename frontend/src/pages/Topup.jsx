@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Wallet, QrCode, Building2, Smartphone, Gift, Upload, X, Link } from 'lucide-react'
 import { api } from '../services/api'
 import Modal from '../components/Modal'
+import { useAuth } from '../hooks/useAuth'
 
 const METHODS = [
   { value: 'promptpay',  label: 'PromptPay',       icon: QrCode,     badge: 'แนะนำ' },
@@ -27,6 +28,7 @@ function extractAngpaoHash(input) {
 
 export default function Topup() {
   const navigate = useNavigate()
+  const { refreshUser } = useAuth()
   const [amount, setAmount]         = useState('')
   const [method, setMethod]         = useState('promptpay')
   const [redeemCode, setRedeemCode] = useState('')
@@ -34,6 +36,35 @@ export default function Topup() {
   const [slip, setSlip]             = useState(null)
   const [loading, setLoading]       = useState(false)
   const [modal, setModal]           = useState({ open: false })
+  const [qrCodeUrl, setQrCodeUrl]   = useState('')
+  const [qrLoading, setQrLoading]   = useState(false)
+
+  useEffect(() => {
+    if (method !== 'promptpay' || !amount || parseFloat(amount) <= 0) {
+      setQrCodeUrl('')
+      return
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      setQrLoading(true)
+      try {
+        const { ok, data } = await api.get(`/payment/promptpay-qr?amount=${amount}`)
+        if (ok && data.status) {
+          setQrCodeUrl(data.qr_image_url)
+        } else {
+          setQrCodeUrl('')
+        }
+      } catch (err) {
+        console.error(err)
+        setQrCodeUrl('')
+      } finally {
+        setQrLoading(false)
+      }
+    }, 400)
+
+    return () => clearTimeout(delayDebounce)
+  }, [amount, method])
+
 
   const submit = async () => {
     if (!localStorage.getItem('token')) { navigate('/login'); return }
@@ -45,6 +76,7 @@ export default function Topup() {
       const { ok, data } = await api.redeemCode(redeemCode)
       setLoading(false)
       if (ok && data.new_balance != null) {
+        await refreshUser()
         setModal({ open: true, type: 'success', title: 'เติมเงินสำเร็จ!', message: data.message || 'เครดิตถูกเพิ่มแล้ว',
           action: { label: 'ดูโปรไฟล์', onClick: () => navigate('/profile') } })
       } else {
@@ -60,6 +92,7 @@ export default function Topup() {
       const { ok, data } = await api.post('/payment/truemoney-angpao', { voucher_url: angpaoUrl })
       setLoading(false)
       if (ok && data.status) {
+        await refreshUser()
         setAngpaoUrl('')
         setModal({ open: true, type: 'success', title: 'สำเร็จ!', message: data.message,
           action: { label: 'ดูประวัติ', onClick: () => navigate('/topup-logs') } })
@@ -82,6 +115,7 @@ export default function Topup() {
     const uploadData = await api.uploadSlip(qrData.ref_code, slip)
     setLoading(false)
     if (uploadData.status) {
+      await refreshUser()
       setSlip(null); setAmount('')
       setModal({ open: true, type: 'success', title: 'ส่งสลิปสำเร็จ!', message: 'กำลังตรวจสอบ รอสักครู่',
         action: { label: 'ดูประวัติเติมเงิน', onClick: () => navigate('/topup-logs') } })
@@ -212,12 +246,27 @@ export default function Topup() {
                 <div className="p-4 bg-[#F2F0F1] rounded-xl text-sm space-y-1.5">
                   <p className="font-black text-black uppercase tracking-wide text-xs mb-2">ข้อมูลบัญชี</p>
                   {method === 'promptpay' ? (
-                    <div className="flex justify-center py-2">
-                      <img src="/static/images/kbank-qr.jpg" alt="kbank-qr" className="w-48 rounded-lg shadow-sm" />
+                    <div className="flex flex-col items-center justify-center py-2 gap-2">
+                      {qrLoading ? (
+                        <div className="w-48 h-48 flex items-center justify-center border-2 border-gray-200 border-dashed rounded-lg bg-gray-50">
+                          <p className="text-xs text-gray-500 font-semibold animate-pulse">กำลังสร้าง QR Code...</p>
+                        </div>
+                      ) : qrCodeUrl ? (
+                        <>
+                          <img src={qrCodeUrl} alt="promptpay-qr" className="w-48 rounded-lg shadow-md border-2 border-black" />
+                          <p className="text-xs text-green-600 font-bold mt-1 text-center">✓ QR Code สำหรับยอดโอน {parseFloat(amount).toFixed(2)} บาท</p>
+                        </>
+                      ) : (
+                        <div className="w-48 h-48 flex flex-col items-center justify-center border-2 border-gray-200 border-dashed rounded-lg bg-gray-50 p-4 text-center">
+                          <p className="text-xs text-amber-600 font-bold">ระบุจำนวนเงินโอน</p>
+                          <p className="text-[10px] text-gray-400 mt-1 leading-relaxed">กรอกยอดเงินด้านบน ระบบจะเจน QR Code ให้ท่านสแกนทันที</p>
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-1.5">
-                      <p className="text-gray-600">พร้อมเพย์: <strong className="text-black">072-2-55794-8</strong></p>
+                      <p className="text-gray-600">พร้อมเพย์: <strong className="text-black">080-062-0646</strong></p>
+
                       <p className="text-gray-600">ชื่อ: <strong className="text-black">ธนกร โกฎิแก้ว</strong></p>
                       <div className="text-gray-600 flex items-center gap-2">
                         <span>ธนาคาร: <strong className="text-black">KBANK</strong></span>

@@ -80,6 +80,7 @@ export const api = {
     users:         ()        => request('GET',    '/admin/users'),
     updateUser:    (id, data)=> request('PUT',    `/admin/users/${id}`, data),
     deleteUser:    (id)      => request('DELETE', `/admin/users/${id}`),
+    userOrders:    (id)      => request('GET',    `/admin/users/${id}/orders`),
     truemoney:          (status) => request('GET',  `/admin/truemoney${status ? `?status=${status}` : ''}`),
     approveTruemoney:   (id, amount) => request('POST', `/admin/truemoney/${id}/approve`, { amount }),
     rejectTruemoney:    (id, reason) => request('POST', `/admin/truemoney/${id}/reject`,  { reason }),

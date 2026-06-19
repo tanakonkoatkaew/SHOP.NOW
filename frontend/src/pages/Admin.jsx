@@ -165,7 +165,7 @@ function SlipManagement() {
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-2xl font-black uppercase tracking-tight">ตรวจสอบสลิป</h2>
+        <h2 className="text-2xl font-black uppercase tracking-tight">รายการเติมเงิน</h2>
         <div className="flex gap-2">
           {['pending_review','approved','rejected','all'].map(s => (
             <button key={s} onClick={() => setFilter(s)}
@@ -473,6 +473,28 @@ function UserManagement() {
   const [editForm, setEditForm] = useState({})
   const [saving, setSaving]   = useState(false)
   const [toast, setToast]     = useState('')
+  const [viewingOrders, setViewingOrders] = useState(null)
+  const [userOrders, setUserOrders]       = useState([])
+  const [ordersLoading, setOrdersLoading] = useState(false)
+
+  const openOrders = async (u) => {
+    setViewingOrders(u)
+    setOrdersLoading(true)
+    setUserOrders([])
+    try {
+      const { ok, data } = await api.admin.userOrders(u.id)
+      if (ok) {
+        setUserOrders(data.results || [])
+      } else {
+        showToast(data.message || 'ดึงประวัติสั่งซื้อไม่สำเร็จ')
+      }
+    } catch (err) {
+      console.error(err)
+      showToast('เกิดข้อผิดพลาดในการดึงข้อมูล')
+    } finally {
+      setOrdersLoading(false)
+    }
+  }
 
   const load = useCallback(() => {
     setLoading(true)
@@ -551,10 +573,17 @@ function UserManagement() {
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button onClick={() => openEdit(u)}
+                          title="แก้ไขผู้ใช้"
                           className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-gray-500 hover:text-black">
                           <Pencil size={14} />
                         </button>
+                        <button onClick={() => openOrders(u)}
+                          title="ดูประวัติการสั่งซื้อ"
+                          className="p-2 hover:bg-gray-100 rounded-lg transition-colors text-blue-500 hover:text-blue-700">
+                          <Package size={14} />
+                        </button>
                         <button onClick={() => handleDelete(u)}
+                          title="ลบผู้ใช้"
                           className="p-2 hover:bg-red-50 rounded-lg transition-colors text-gray-400 hover:text-red-500">
                           <Trash2 size={14} />
                         </button>
@@ -604,6 +633,40 @@ function UserManagement() {
                 <button onClick={handleSave} disabled={saving}
                   className="px-5 py-2 bg-black text-white rounded-full text-sm font-bold hover:bg-gray-800 disabled:opacity-40 transition-colors">
                   {saving ? 'กำลังบันทึก...' : 'บันทึก'}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        )}
+        {viewingOrders && (
+          <Modal open title={`ประวัติการสั่งซื้อ: ${viewingOrders.username}`} onClose={() => setViewingOrders(null)}>
+            <div className="space-y-4">
+              {ordersLoading ? (
+                <div className="py-8"><Spinner /></div>
+              ) : userOrders.length === 0 ? (
+                <div className="text-center py-10 text-gray-400 text-sm font-semibold">ยังไม่มีประวัติการซื้อสินค้า</div>
+              ) : (
+                <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-1">
+                  {userOrders.map(o => (
+                    <div key={o.id} className="flex items-center gap-3 p-3.5 border-2 border-gray-100 rounded-xl hover:border-gray-200 transition-all bg-gray-50/30">
+                      {o.product_image && (
+                        <img src={o.product_image} alt={o.product_name} className="w-12 h-12 object-cover rounded-lg border-2 border-gray-100" />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-sm text-black truncate">{o.product_name}</p>
+                        <p className="text-xs text-gray-500 mt-0.5">จำนวน: {o.quantity} ชิ้น | ยอดรวม: {(o.product_price * o.quantity).toFixed(2)} ฿</p>
+                        <p className="text-[10px] text-gray-400 font-mono mt-0.5">{o.dt_purchased}</p>
+                      </div>
+                      {o.refund && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 bg-red-100 text-red-600 rounded-full shrink-0">คืนเงินแล้ว</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex justify-end pt-2">
+                <button onClick={() => setViewingOrders(null)} className="px-5 py-2 bg-black text-white rounded-full text-sm font-bold hover:bg-gray-800 transition-colors">
+                  ปิด
                 </button>
               </div>
             </div>
@@ -964,7 +1027,7 @@ function ChatManagement() {
 
 const TABS = [
   { id: 'dashboard', label: 'ภาพรวม',    icon: LayoutDashboard },
-  { id: 'slips',     label: 'ตรวจสลิป',  icon: FileImage },
+  { id: 'slips',     label: 'รายการเติมเงิน',  icon: FileImage },
   { id: 'truemoney', label: 'ซองอั่งเป่า', icon: Gift },
   { id: 'products',  label: 'สินค้า',     icon: Package },
   { id: 'users',     label: 'ผู้ใช้',     icon: Users },
