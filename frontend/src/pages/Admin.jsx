@@ -145,7 +145,6 @@ function Dashboard() {
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatCard label="ผู้ใช้ทั้งหมด" value={stats.users} icon={Users} />
         <StatCard label="สินค้า" value={stats.products} icon={Package} />
-        <StatCard label="สลิปรอตรวจ" value={stats.pending_slips} icon={FileImage} sub="รอการอนุมัติ" />
         <StatCard label="รอจัดส่ง" value={stats.pending_orders ?? 0} icon={Truck} sub="ยังไม่สำเร็จ" />
         <StatCard label="รายได้รวม" value={`${(stats.total_revenue || 0).toLocaleString()} ฿`} icon={CheckCircle} />
         <StatCard label="แต้มสะสมคงค้าง" value={(stats.points_outstanding ?? 0).toLocaleString()} icon={Star} sub="ทั้งระบบ" />
@@ -312,120 +311,6 @@ function CouponManagement() {
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// ─── TAB: SLIP MANAGEMENT ────────────────────────────────────────────────────
-
-function SlipRow({ slip, onApprove, onReject }) {
-  const [imgOpen, setImgOpen] = useState(false)
-  return (
-    <>
-      <tr className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-        <td className="px-4 py-3 text-xs font-mono text-gray-500">{slip.ref}</td>
-        <td className="px-4 py-3 text-sm font-semibold">{slip.username}</td>
-        <td className="px-4 py-3 text-sm font-bold">{slip.amount?.toLocaleString()} ฿</td>
-        <td className="px-4 py-3 text-xs text-gray-400">{slip.created_at?.slice(0, 16).replace('T', ' ')}</td>
-        <td className="px-4 py-3"><Badge status={slip.status} /></td>
-        <td className="px-4 py-3">
-          {slip.slip_image_url ? (
-            <button onClick={() => setImgOpen(true)} className="text-xs text-blue-600 underline hover:text-blue-800">ดูสลิป</button>
-          ) : <span className="text-xs text-gray-300">—</span>}
-        </td>
-        <td className="px-4 py-3">
-          {slip.status === 'pending_review' && (
-            <div className="flex gap-2">
-              <button onClick={() => onApprove(slip.ref)}
-                className="flex items-center gap-1 px-3 py-1.5 bg-black text-white text-xs font-bold rounded-full hover:bg-gray-800 transition-colors">
-                <CheckCircle size={12} /> อนุมัติ
-              </button>
-              <button onClick={() => onReject(slip.ref)}
-                className="flex items-center gap-1 px-3 py-1.5 border-2 border-red-200 text-red-500 text-xs font-bold rounded-full hover:border-red-400 transition-colors">
-                <XCircle size={12} /> ปฏิเสธ
-              </button>
-            </div>
-          )}
-        </td>
-      </tr>
-      <Modal open={imgOpen} title="สลิปการโอนเงิน" onClose={() => setImgOpen(false)}>
-        <img src={slip.slip_image_url} alt="slip" className="w-full rounded-xl border border-gray-200" />
-      </Modal>
-    </>
-  )
-}
-
-function SlipManagement() {
-  const [slips, setSlips] = useState([])
-  const [filter, setFilter] = useState('pending_review')
-  const [loading, setLoading] = useState(true)
-  const [toast, setToast] = useState('')
-
-  const load = useCallback(() => {
-    setLoading(true)
-    api.admin.slips(filter).then(({ data }) => {
-      setSlips(data.results || [])
-      setLoading(false)
-    })
-  }, [filter])
-
-  useEffect(() => { load() }, [load])
-
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
-
-  const handleApprove = async (ref) => {
-    const { ok, data } = await api.admin.approveSlip(ref)
-    if (ok) { showToast(data.message); load() }
-    else showToast(data.message || 'เกิดข้อผิดพลาด')
-  }
-
-  const handleReject = async (ref) => {
-    if (!confirm('ยืนยันปฏิเสธสลิปนี้?')) return
-    const { ok, data } = await api.admin.rejectSlip(ref, '')
-    if (ok) { showToast('ปฏิเสธสลิปแล้ว'); load() }
-    else showToast(data.message || 'เกิดข้อผิดพลาด')
-  }
-
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-2xl font-black uppercase tracking-tight">รายการเติมเงิน</h2>
-        <div className="flex gap-2">
-          {['pending_review', 'approved', 'rejected', 'all'].map(s => (
-            <button key={s} onClick={() => setFilter(s)}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${filter === s ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:border-black'
-                }`}>
-              {s === 'pending_review' ? 'รอตรวจ' : s === 'approved' ? 'อนุมัติ' : s === 'rejected' ? 'ปฏิเสธ' : 'ทั้งหมด'}
-            </button>
-          ))}
-          <button onClick={load} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><RefreshCw size={14} /></button>
-        </div>
-      </div>
-
-      {toast && (
-        <div className="px-4 py-3 bg-black text-white text-sm font-semibold rounded-xl">{toast}</div>
-      )}
-
-      <div className="bg-white border-2 border-gray-100 rounded-2xl overflow-hidden">
-        {loading ? <div className="py-16"><Spinner /></div> : slips.length === 0 ? (
-          <div className="text-center py-20 text-gray-400 font-medium">ไม่มีรายการ</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-[#F2F0F1]">
-                <tr>
-                  {['Ref', 'Username', 'จำนวน', 'วันที่', 'สถานะ', 'สลิป', 'จัดการ'].map(h => (
-                    <th key={h} className="px-4 py-3 text-xs font-black uppercase tracking-wide text-gray-600">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {slips.map(s => <SlipRow key={s.ref} slip={s} onApprove={handleApprove} onReject={handleReject} />)}
               </tbody>
             </table>
           </div>
@@ -937,137 +822,6 @@ function UserManagement() {
   )
 }
 
-// ─── TAB: TRUEMONEY MANAGEMENT ───────────────────────────────────────────────
-
-function TruemoneyManagement() {
-  const [vouchers, setVouchers] = useState([])
-  const [filter, setFilter] = useState('pending_review')
-  const [loading, setLoading] = useState(true)
-  const [toast, setToast] = useState('')
-  const [approving, setApproving] = useState(null) // { id, username, amount }
-
-  const load = useCallback(() => {
-    setLoading(true)
-    api.admin.truemoney(filter).then(({ data }) => {
-      setVouchers(data.results || [])
-      setLoading(false)
-    })
-  }, [filter])
-
-  useEffect(() => { load() }, [load])
-
-  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
-
-  const handleApprove = async () => {
-    if (!approving || !approving.amount || parseFloat(approving.amount) <= 0) return
-    const { ok, data } = await api.admin.approveTruemoney(approving.id, parseFloat(approving.amount))
-    if (ok) { showToast(data.message); setApproving(null); load() }
-    else showToast(data.message || 'เกิดข้อผิดพลาด')
-  }
-
-  const handleReject = async (id) => {
-    if (!confirm('ยืนยันปฏิเสธซองนี้?')) return
-    const { ok, data } = await api.admin.rejectTruemoney(id, '')
-    if (ok) { showToast('ปฏิเสธแล้ว'); load() }
-    else showToast(data.message || 'เกิดข้อผิดพลาด')
-  }
-
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-2xl font-black uppercase tracking-tight">ซองอั่งเป่า TrueMoney</h2>
-        <div className="flex gap-2">
-          {['pending_review', 'approved', 'rejected', 'all'].map(s => (
-            <button key={s} onClick={() => setFilter(s)}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${filter === s ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:border-black'
-                }`}>
-              {s === 'pending_review' ? 'รอตรวจ' : s === 'approved' ? 'อนุมัติ' : s === 'rejected' ? 'ปฏิเสธ' : 'ทั้งหมด'}
-            </button>
-          ))}
-          <button onClick={load} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><RefreshCw size={14} /></button>
-        </div>
-      </div>
-
-      {toast && <div className="px-4 py-3 bg-black text-white text-sm font-semibold rounded-xl">{toast}</div>}
-
-      <div className="bg-white border-2 border-gray-100 rounded-2xl overflow-hidden">
-        {loading ? <div className="py-16"><Spinner /></div> : vouchers.length === 0 ? (
-          <div className="text-center py-20 text-gray-400 font-medium">ไม่มีรายการ</div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead className="bg-[#F2F0F1]">
-                <tr>
-                  {['Username', 'Voucher Hash', 'จำนวน', 'สถานะ', 'วันที่', 'จัดการ'].map(h => (
-                    <th key={h} className="px-4 py-3 text-xs font-black uppercase tracking-wide text-gray-600">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {vouchers.map(v => (
-                  <tr key={v.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                    <td className="px-4 py-3 text-sm font-semibold">{v.username}</td>
-                    <td className="px-4 py-3">
-                      <code className="text-xs bg-gray-100 px-2 py-1 rounded font-mono">{v.voucher_hash}</code>
-                    </td>
-                    <td className="px-4 py-3 text-sm font-bold">
-                      {v.amount != null ? `${v.amount.toFixed(2)} ฿` : <span className="text-gray-400 text-xs">ยังไม่ทราบ</span>}
-                    </td>
-                    <td className="px-4 py-3"><Badge status={v.status} /></td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{v.created_at?.slice(0, 16).replace('T', ' ')}</td>
-                    <td className="px-4 py-3">
-                      {v.status === 'pending_review' && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => setApproving({ id: v.id, username: v.username, amount: v.amount ?? '' })}
-                            className="flex items-center gap-1 px-3 py-1.5 bg-black text-white text-xs font-bold rounded-full hover:bg-gray-800 transition-colors">
-                            <CheckCircle size={12} /> อนุมัติ
-                          </button>
-                          <button onClick={() => handleReject(v.id)}
-                            className="flex items-center gap-1 px-3 py-1.5 border-2 border-red-200 text-red-500 text-xs font-bold rounded-full hover:border-red-400 transition-colors">
-                            <XCircle size={12} /> ปฏิเสธ
-                          </button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-
-      <AnimatePresence>
-        {approving && (
-          <Modal open title={`อนุมัติซองอั่งเป่า: ${approving.username}`} onClose={() => setApproving(null)}>
-            <div className="space-y-4">
-              <p className="text-sm text-gray-600">กรอกจำนวนเงินที่จะเติมให้ผู้ใช้ (ตรวจสอบจาก TrueMoney ก่อน)</p>
-              <div>
-                <label className="block text-xs font-black uppercase mb-1">จำนวนเงิน (฿) *</label>
-                <input
-                  type="number"
-                  value={approving.amount}
-                  onChange={e => setApproving(a => ({ ...a, amount: e.target.value }))}
-                  placeholder="เช่น 50"
-                  className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-black text-sm transition-colors"
-                />
-              </div>
-              <div className="flex gap-2 justify-end pt-2">
-                <button onClick={() => setApproving(null)} className="px-5 py-2 border-2 border-gray-200 rounded-full text-sm font-semibold hover:border-black transition-colors">ยกเลิก</button>
-                <button onClick={handleApprove} disabled={!approving.amount || parseFloat(approving.amount) <= 0}
-                  className="px-5 py-2 bg-black text-white rounded-full text-sm font-bold hover:bg-gray-800 disabled:opacity-40 transition-colors">
-                  ยืนยันเติมเงิน
-                </button>
-              </div>
-            </div>
-          </Modal>
-        )}
-      </AnimatePresence>
-    </div>
-  )
-}
-
 // ─── TAB: CHAT MANAGEMENT ────────────────────────────────────────────────────
 
 function ChatBubble({ msg }) {
@@ -1387,8 +1141,6 @@ function OrderManagement() {
 const TABS = [
   { id: 'dashboard', label: 'ภาพรวม', icon: LayoutDashboard },
   { id: 'orders', label: 'คำสั่งซื้อ', icon: ShoppingBag },
-  { id: 'slips', label: 'รายการเติมเงิน', icon: FileImage },
-  { id: 'truemoney', label: 'ซองอั่งเป่า', icon: Gift },
   { id: 'products', label: 'สินค้า', icon: Package },
   { id: 'coupons', label: 'คูปอง', icon: Gift },
   { id: 'users', label: 'ผู้ใช้', icon: Users },
@@ -1460,8 +1212,6 @@ export default function Admin() {
           >
             {tab === 'dashboard' && <Dashboard />}
             {tab === 'orders' && <OrderManagement />}
-            {tab === 'slips' && <SlipManagement />}
-            {tab === 'truemoney' && <TruemoneyManagement />}
             {tab === 'products' && <ProductManagement />}
             {tab === 'coupons' && <CouponManagement />}
             {tab === 'users' && <UserManagement />}

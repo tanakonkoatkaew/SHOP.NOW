@@ -139,7 +139,7 @@ export default function Profile() {
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-2xl p-5 text-white shadow-lg shadow-amber-200">
             <Wallet size={20} className="mb-3 opacity-80" />
-            <p className="text-xs font-semibold opacity-75 mb-1">เครดิตคงเหลือ</p>
+            <p className="text-xs font-semibold opacity-75 mb-1">Store Credit</p>
             <p className="text-3xl font-black">{parseFloat(profile?.credit || 0).toFixed(2)}</p>
             <p className="text-xs opacity-75">บาท</p>
           </div>
@@ -184,11 +184,11 @@ export default function Profile() {
             </div>
             <span className="text-sm font-semibold text-slate-700">ประวัติการซื้อ</span>
           </Link>
-          <Link to="/topup-logs" className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-2xl hover:border-amber-300 hover:bg-amber-50 hover:shadow-md hover:shadow-amber-100 transition-all group">
+          <Link to="/topup" className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-2xl hover:border-amber-300 hover:bg-amber-50 hover:shadow-md hover:shadow-amber-100 transition-all group">
             <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-white transition-colors">
               <CreditCard size={18} className="text-slate-400 group-hover:text-amber-500" />
             </div>
-            <span className="text-sm font-semibold text-slate-700">ประวัติเติมเงิน</span>
+            <span className="text-sm font-semibold text-slate-700">เติม Store Credit</span>
           </Link>
         </div>
 

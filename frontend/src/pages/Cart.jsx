@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ShoppingCart, Minus, Plus, Trash2, Tag, Star, ArrowLeft, Wallet } from 'lucide-react'
+import { ShoppingCart, Minus, Plus, Trash2, Tag, Star, ArrowLeft, Gift, CreditCard } from 'lucide-react'
 import { useCart } from '../hooks/useCart'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
@@ -15,22 +15,24 @@ export default function Cart() {
   const { user, refreshUser } = useAuth()
 
   const [coupon, setCoupon] = useState('')
-  const [couponResult, setCouponResult] = useState(null)   // {ok, discount, msg}
+  const [couponResult, setCouponResult] = useState(null)
   const [usePoints, setUsePoints] = useState(false)
+  const [useCredit, setUseCredit] = useState(false)
   const [placing, setPlacing] = useState(false)
   const [modal, setModal] = useState({ open: false })
 
   const availablePoints = parseFloat(user?.reward || 0)
-  const credit = parseFloat(user?.credit || 0)
+  const availableCredit = parseFloat(user?.credit || 0)
 
   const flashSavings = Math.max(0, subtotalOriginal - subtotal)
   const couponPct = couponResult?.ok ? couponResult.discount : 0
   const couponDiscount = +(subtotal * couponPct / 100).toFixed(2)
-  const runningTotal = Math.max(0, subtotal - couponDiscount)
-  const pointsValue = usePoints ? +Math.min(availablePoints, runningTotal).toFixed(2) : 0
-  const total = +Math.max(0, runningTotal - pointsValue).toFixed(2)
+  const afterCoupon = Math.max(0, subtotal - couponDiscount)
+  const pointsValue = usePoints ? +Math.min(availablePoints, afterCoupon).toFixed(2) : 0
+  const afterPoints = Math.max(0, afterCoupon - pointsValue)
+  const creditValue = useCredit ? +Math.min(availableCredit, afterPoints).toFixed(2) : 0
+  const total = +Math.max(0, afterPoints - creditValue).toFixed(2)
   const pointsEarned = +(total * POINTS_RATE).toFixed(2)
-  const notEnough = user && credit < total
 
   const checkCoupon = async () => {
     if (!coupon.trim()) return
@@ -46,18 +48,22 @@ export default function Cart() {
     if (!user) { navigate('/login'); return }
     if (items.length === 0) return
     setPlacing(true)
-    const { ok, data } = await api.checkout({
+    const { ok, data } = await api.createCheckoutSession({
       items: items.map(i => ({ product_id: i.id, qty: i.qty })),
       coupon_code: couponResult?.ok ? coupon.trim() : undefined,
       points: pointsValue,
+      credit: creditValue,
     })
+    // Redirect to Stripe hosted checkout when a card payment is due
+    if (ok && data.url) { window.location.href = data.url; return }
     setPlacing(false)
-    if (ok && data.status) {
+    if (ok && data.status && data.paid) {
+      // Fully covered by points + store credit — order already completed
       await refreshUser()
       clear()
       setModal({
         open: true, type: 'success', title: 'สั่งซื้อสำเร็จ! 🎉',
-        message: `คำสั่งซื้อของคุณกำลังดำเนินการ${data.summary?.points_earned ? ` • ได้รับ ${data.summary.points_earned} แต้ม` : ''}`,
+        message: `ชำระด้วยแต้ม/เครดิตครบถ้วน${data.summary?.points_earned ? ` • ได้รับ ${data.summary.points_earned} แต้ม` : ''}`,
         action: { label: 'ติดตามคำสั่งซื้อ', onClick: () => navigate('/purchase-logs') },
       })
     } else {
@@ -150,14 +156,24 @@ export default function Cart() {
             </label>
           )}
 
+          {/* Store credit */}
+          {availableCredit > 0 && (
+            <label className="flex items-center gap-3 p-3 bg-violet-50 border border-violet-100 rounded-xl cursor-pointer">
+              <input type="checkbox" checked={useCredit} onChange={e => setUseCredit(e.target.checked)} className="w-4 h-4 accent-violet-600" />
+              <Gift size={16} className="text-violet-500" />
+              <span className="text-sm text-violet-700 font-medium flex-1">ใช้ Store Credit {availableCredit.toFixed(2)} ฿</span>
+            </label>
+          )}
+
           {/* Breakdown */}
           <div className="space-y-2 text-sm border-t border-slate-100 pt-4">
             <Row label="ยอดสินค้า" value={`${subtotalOriginal.toFixed(2)} ฿`} />
             {flashSavings > 0 && <Row label="ส่วนลด Flash Sale" value={`-${flashSavings.toFixed(2)} ฿`} red />}
             {couponDiscount > 0 && <Row label="ส่วนลดคูปอง" value={`-${couponDiscount.toFixed(2)} ฿`} red />}
             {pointsValue > 0 && <Row label="ใช้แต้มสะสม" value={`-${pointsValue.toFixed(2)} ฿`} red />}
+            {creditValue > 0 && <Row label="ใช้ Store Credit" value={`-${creditValue.toFixed(2)} ฿`} red />}
             <div className="flex justify-between items-baseline border-t border-slate-100 pt-3">
-              <span className="font-black text-slate-900">ยอดชำระ</span>
+              <span className="font-black text-slate-900">ยอดชำระ{total > 0 ? ' (บัตร/พร้อมเพย์)' : ''}</span>
               <span className="font-black text-2xl text-amber-500">{total.toFixed(2)} ฿</span>
             </div>
             {pointsEarned > 0 && (
@@ -165,20 +181,13 @@ export default function Cart() {
             )}
           </div>
 
-          {/* Credit / checkout */}
-          {user && (
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <Wallet size={14} /> เครดิตคงเหลือ: <span className={`font-bold ${notEnough ? 'text-red-500' : 'text-slate-800'}`}>{credit.toFixed(2)} ฿</span>
-            </div>
-          )}
-          {notEnough && (
-            <Link to="/topup" className="block text-center text-sm font-semibold text-amber-600 hover:text-amber-700">เครดิตไม่พอ • เติมเงิน →</Link>
-          )}
-
-          <button onClick={placeOrder} disabled={placing || (user && notEnough)}
-            className="w-full py-4 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-black rounded-xl transition-all shadow-lg shadow-amber-500/20">
-            {placing ? 'กำลังดำเนินการ...' : user ? 'ชำระเงิน' : 'เข้าสู่ระบบเพื่อสั่งซื้อ'}
+          <button onClick={placeOrder} disabled={placing}
+            className="w-full flex items-center justify-center gap-2 py-4 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white font-black rounded-xl transition-all shadow-lg shadow-amber-500/20">
+            {placing ? 'กำลังดำเนินการ...' : !user ? 'เข้าสู่ระบบเพื่อสั่งซื้อ' : total > 0 ? <><CreditCard size={18} /> ชำระเงินผ่าน Stripe</> : 'ยืนยันคำสั่งซื้อ'}
           </button>
+          {total > 0 && user && (
+            <p className="text-[11px] text-slate-400 text-center">ชำระปลอดภัยผ่าน Stripe · รองรับบัตรเครดิต/เดบิต & พร้อมเพย์</p>
+          )}
         </div>
       </div>
 

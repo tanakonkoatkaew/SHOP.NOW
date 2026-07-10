@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, Wallet, User, LogOut, ChevronDown, Search, ShieldCheck, ShoppingCart, Star } from 'lucide-react'
+import { Menu, X, Wallet, User, LogOut, ChevronDown, Search, ShieldCheck, ShoppingCart, Star, Gift } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 import { useCart } from '../hooks/useCart'
 import NotificationBell from './NotificationBell'
@@ -101,7 +101,7 @@ export default function Navbar() {
                       className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden"
                     >
                       <div className="px-4 py-3 bg-[#F2F0F1] flex items-center justify-between">
-                        <span className="flex items-center gap-1.5 text-xs text-gray-500"><Wallet size={13} /> เครดิต</span>
+                        <span className="flex items-center gap-1.5 text-xs text-gray-500"><Wallet size={13} /> Store Credit</span>
                         <span className="text-sm font-bold text-black">{parseFloat(user.credit || 0).toFixed(2)} ฿</span>
                       </div>
                       <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
@@ -114,7 +114,7 @@ export default function Navbar() {
                       </Link>
                       <Link to="/topup" onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <Wallet size={15} /> เติมเงิน
+                        <Gift size={15} /> เติม Store Credit
                       </Link>
                     {user.is_admin && (
                       <Link to="/admin" onClick={() => setUserMenuOpen(false)}
@@ -124,11 +124,7 @@ export default function Navbar() {
                     )}
                       <Link to="/purchase-logs" onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        ประวัติการซื้อ
-                      </Link>
-                      <Link to="/topup-logs" onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        ประวัติเติมเงิน
+                        ติดตามคำสั่งซื้อ
                       </Link>
                       <div className="h-px bg-gray-100 mx-4" />
                       <button

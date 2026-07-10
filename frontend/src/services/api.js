@@ -47,31 +47,16 @@ export const api = {
   // Orders
   purchaseLogs: () => request('GET', '/products/me/logs/product/0/50'),
   myOrders:     () => request('GET', '/products/me/orders'),
-  buyProduct:   (id, body) => request('POST', `/products/order/product/${id}`, body),
-  checkout:     (body) => request('POST', '/products/checkout', body),
   checkCoupon:  (code) => request('GET', `/products/checkCoupon/${code}`),
 
-  // Payment
-  topupQR:     (body) => request('POST', '/payment/qr', body),
-  redeemCode:  (code) => request('POST', '/payment/redeem-code', { code }),
-  topupLogs:   ()     => request('GET',  '/payment/me/topup/logs'),
-  uploadSlip: (ref, file) => {
-    const form = new FormData()
-    form.append('slip', file)
-    form.append('ref_code', ref)
-    return fetch(`${BASE}/payment/upload-slip`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${getToken()}` },
-      body: form,
-    }).then(r => r.json())
-  },
+  // Payment (Stripe Checkout)
+  createCheckoutSession: (body) => request('POST', '/payment/checkout-session', body),
+  confirmPayment:        (session_id) => request('POST', '/payment/confirm', { session_id }),
+  redeemCode:            (code) => request('POST', '/payment/redeem-code', { code }),
 
   // Admin
   admin: {
     stats:         ()        => request('GET',    '/admin/stats'),
-    slips:         (status)  => request('GET',    `/admin/slips${status ? `?status=${status}` : ''}`),
-    approveSlip:   (ref)     => request('POST',   `/admin/slips/${ref}/approve`),
-    rejectSlip:    (ref, reason) => request('POST', `/admin/slips/${ref}/reject`, { reason }),
     uploadProductImage: (file) => {
       const form = new FormData()
       form.append('image', file)
@@ -95,9 +80,6 @@ export const api = {
     userOrders:    (id)      => request('GET',    `/admin/users/${id}/orders`),
     orders:        (status)  => request('GET',    `/admin/orders${status && status !== 'all' ? `?status=${status}` : ''}`),
     updateOrderStatus: (rid, status) => request('POST', `/admin/orders/${rid}/status`, { status }),
-    truemoney:          (status) => request('GET',  `/admin/truemoney${status ? `?status=${status}` : ''}`),
-    approveTruemoney:   (id, amount) => request('POST', `/admin/truemoney/${id}/approve`, { amount }),
-    rejectTruemoney:    (id, reason) => request('POST', `/admin/truemoney/${id}/reject`,  { reason }),
 
     // Chat (admin side)
     chatSessions:       ()           => request('GET',    '/admin/chat/sessions'),

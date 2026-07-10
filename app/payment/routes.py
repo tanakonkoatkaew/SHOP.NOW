@@ -1,20 +1,19 @@
 import os
 import uuid
 import jwt
-import requests as http_requests
-from urllib.parse import urlparse, parse_qs
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, g
 from bson import ObjectId
 from app.extensions import get_db
 from app.utils.logger import send_discord_log_async
+from app.services.order_service import compute_order, finalize_order
+from app.services import stripe_service
 
 payment_bp = Blueprint('payment', __name__)
 SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "your-secret-key")
 
-SLIP_UPLOAD_DIR = os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads', 'slips')
 
-# local auth decorator (payment module uses g.user instead of g.user_id)
+# local auth decorator (payment module uses g.user)
 def auth_required(f):
     from functools import wraps
     @wraps(f)
@@ -34,350 +33,136 @@ def auth_required(f):
     return wrapper
 
 
-# ─── QR / TOPUP REQUEST ──────────────────────────────────────────────────────
+# ─── STRIPE CHECKOUT ─────────────────────────────────────────────────────────
 
-@payment_bp.route('/qr', methods=['POST'])
+@payment_bp.route('/checkout-session', methods=['POST'])
 @auth_required
-def create_qr():
-    data = request.json or {}
-    amount = data.get('amount')
-    if not amount or float(amount) <= 0:
-        return jsonify({"error": "จำนวนเงินไม่ถูกต้อง"}), 400
-
+def create_checkout_session():
+    """Phase 1: price the cart, stash a pending order, and hand back either a
+    Stripe Checkout URL or (if fully covered by points/credit) a finished order."""
     db = get_db()
-    user_id = ObjectId(g.user)
-    user = db.users.find_one({"_id": user_id}, {"username": 1})
-    ref_code = f"REF{uuid.uuid4().hex[:8].upper()}"
+    data = request.json or {}
+    items = data.get("items", [])
+    if not isinstance(items, list) or not items:
+        return jsonify({"status": False, "msg": "ตะกร้าว่างเปล่า"}), 400
 
-    payment_doc = {
-        "_id":        ref_code,
-        "user_id":    user_id,
-        "username":   user.get("username", "") if user else "",
-        "amount":     float(amount),
-        "status":     "pending",
+    user = db.users.find_one({"_id": ObjectId(g.user)})
+    if not user:
+        return jsonify({"status": False, "msg": "ไม่พบผู้ใช้"}), 404
+
+    ok, res, code = compute_order(
+        db, user, items,
+        coupon_code=data.get("coupon_code"),
+        points_to_use=data.get("points", 0),
+        credit_to_use=data.get("credit", 0),
+    )
+    if not ok:
+        return jsonify(res), code
+
+    summary = res["summary"]
+    pending_id = str(uuid.uuid4())
+    pending = {
+        "_id": pending_id,
+        "user_id": g.user,
+        "line_items": res["line_items"],
+        "summary": summary,
+        "discount_percent": res["discount_percent"],
+        "coupon_id": res["coupon_id"],
+        "coupon_code": (data.get("coupon_code") or "").upper() or None,
+        "points_used_pts": res["points_used_pts"],
+        "status": "awaiting_payment",
+        "currency": os.getenv("STRIPE_CURRENCY", "thb"),
         "created_at": datetime.now(timezone.utc),
-        "credited":   False,
-        "slip_uploaded": False,
     }
-    db.pending_qr_payments.insert_one(payment_doc)
+    db.pending_orders.insert_one(pending)
 
-    return jsonify({
-        "ref":        ref_code,
-        "ref_code":   ref_code,
-        "created_at": payment_doc["created_at"].isoformat(),
-    })
+    # Fully covered by points + store credit → no card payment needed
+    if summary["total"] <= 0:
+        fok, fres, fcode = finalize_order(db, pending, payment_ref=None)
+        if fok:
+            fres["paid"] = True
+        return jsonify(fres), fcode
 
+    if not stripe_service.is_configured():
+        return jsonify({"status": False, "msg": "ระบบชำระเงินยังไม่ได้ตั้งค่า (STRIPE_SECRET_KEY)"}), 503
 
-def crc16_ccitt(data: bytes) -> int:
-    crc = 0xFFFF
-    for byte in data:
-        crc ^= (byte << 8)
-        for _ in range(8):
-            if (crc & 0x8000):
-                crc = (crc << 1) ^ 0x1021
-            else:
-                crc = crc << 1
-            crc &= 0xFFFF
-    return crc
-
-def generate_promptpay_payload(promptpay_id, amount):
-    import re
-    promptpay_id = re.sub(r'[^0-9]', '', str(promptpay_id))
-    
-    if len(promptpay_id) == 10 and promptpay_id.startswith('0'):
-        target = "0066" + promptpay_id[1:]
-        merchant_info = f"0016A00000067701011101{len(target):02d}{target}"
-    elif len(promptpay_id) == 13:
-        merchant_info = f"0016A00000067701011102{len(promptpay_id):02d}{promptpay_id}"
-    elif len(promptpay_id) == 15:
-        merchant_info = f"0016A00000067701011103{len(promptpay_id):02d}{promptpay_id}"
-    else:
-        if len(promptpay_id) <= 10:
-            target = "0066" + promptpay_id.lstrip('0')
-            merchant_info = f"0016A00000067701011101{len(target):02d}{target}"
-        else:
-            merchant_info = f"0016A00000067701011102{len(promptpay_id):02d}{promptpay_id}"
-
-    payload = "000201"
-    payload += "010212"
-    payload += f"29{len(merchant_info):02d}{merchant_info}"
-    payload += "5303764"
-    
-    amount_str = f"{float(amount):.2f}"
-    payload += f"54{len(amount_str):02d}{amount_str}"
-    payload += "5802TH"
-    payload += "6304"
-    
-    crc = crc16_ccitt(payload.encode('ascii'))
-    payload += f"{crc:04X}"
-    return payload
-
-@payment_bp.route('/promptpay-qr', methods=['GET'])
-@auth_required
-def get_promptpay_qr():
-    amount = request.args.get('amount')
-    if not amount:
-        return jsonify({"status": False, "message": "กรุณาระบุจำนวนเงิน"}), 400
+    base = request.host_url  # ends with '/'
     try:
-        amount_val = float(amount)
-        if amount_val <= 0:
-            raise ValueError()
-    except ValueError:
-        return jsonify({"status": False, "message": "จำนวนเงินไม่ถูกต้อง"}), 400
-        
-    promptpay_id = os.getenv("PROMPTPAY_ID", "").strip()
-    if not promptpay_id:
-        return jsonify({"status": False, "message": "ระบบยังไม่ได้เปิดใช้งาน PromptPay ID ในการรับเงิน"}), 400
-        
-    try:
-        qr_payload = generate_promptpay_payload(promptpay_id, amount_val)
-        qr_image_url = f"https://api.qrserver.com/v1/create-qr-code/?size=300x300&data={qr_payload}"
-        return jsonify({
-            "status": True,
-            "qr_payload": qr_payload,
-            "qr_image_url": qr_image_url
-        })
-    except Exception as e:
-        return jsonify({"status": False, "message": f"เกิดข้อผิดพลาดในการสร้าง QR Code: {str(e)}"}), 500
-
-
-# ─── UPLOAD SLIP (save image → wait for admin approval) ──────────────────────
-
-
-@payment_bp.route('/upload-slip', methods=['POST'])
-@auth_required
-def upload_slip():
-    if 'slip' not in request.files:
-        return jsonify({"status": False, "message": "ไม่ได้แนบไฟล์สลิป"}), 400
-
-    slip_file = request.files['slip']
-    ref_code  = request.form.get("ref_code")
-    if not ref_code:
-        return jsonify({"status": False, "message": "ไม่พบ ref_code"}), 400
-
-    db = get_db()
-    user_id = ObjectId(g.user)
-    payment = db.pending_qr_payments.find_one({"_id": ref_code, "user_id": user_id})
-    if not payment:
-        return jsonify({"status": False, "message": "ไม่พบคำสั่งชำระเงินนี้"}), 404
-    if payment.get("slip_uploaded"):
-        return jsonify({"status": False, "message": "ส่งสลิปแล้ว กรุณารอการตรวจสอบ"}), 400
-
-    # Save image
-    os.makedirs(SLIP_UPLOAD_DIR, exist_ok=True)
-    ext      = os.path.splitext(slip_file.filename)[1] or '.jpg'
-    filename = f"{ref_code}_{uuid.uuid4().hex[:6]}{ext}"
-    save_path = os.path.join(SLIP_UPLOAD_DIR, filename)
-    slip_file.save(save_path)
-
-    slip_image_url = f"/static/uploads/slips/{filename}"
-
-    # Manual-review mode (SLIP_AUTO_VERIFY != "true"): skip OCR entirely and queue
-    # the slip for an admin to approve. Safe & free — no external API needed.
-    auto_verify = os.getenv("SLIP_AUTO_VERIFY", "true").lower() == "true"
-    if not auto_verify:
-        db.pending_qr_payments.update_one({"_id": ref_code}, {"$set": {
-            "status":         "pending_review",
-            "slip_uploaded":  True,
-            "slip_image_url": slip_image_url,
-            "uploaded_at":    datetime.now(timezone.utc),
-        }})
-        try:
-            send_discord_log_async(
-                event_type="🧾 มีสลิปใหม่รอตรวจสอบ",
-                request_headers=dict(request.headers),
-                ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
-                host_url=request.host_url,
-                referrer=request.referrer,
-                data={
-                    "User": payment.get("username", "—"),
-                    "Amount": f"{payment['amount']:.2f} ฿",
-                    "Ref": ref_code,
-                },
-            )
-        except Exception as e:
-            print("[slip] admin notify failed:", e)
-        return jsonify({
-            "status":        True,
-            "auto_verified": False,
-            "message":       "ส่งสลิปสำเร็จ กำลังรอแอดมินตรวจสอบ (ปกติภายใน 5-15 นาที)",
-        })
-
-    # Perform automatic slip verification using Google Cloud Vision OCR
-    from app.services.payment_service import verify_slip_ocr
-
-    ocr_result = verify_slip_ocr(save_path, payment["amount"])
-    
-    if ocr_result["success"]:
-        # Auto-approve: Add credit to user and set payment status to approved
-        db.users.update_one(
-            {"_id": payment["user_id"]},
-            {"$inc": {"credit": payment["amount"]}}
+        session = stripe_service.create_checkout_session(
+            pending_id=pending_id,
+            amount_thb=summary["total"],
+            item_count=len(res["line_items"]),
+            success_url=f"{base}checkout/success?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{base}cart?canceled=1",
+            customer_email=(user.get("email") or "").strip() or None,
         )
-        db.pending_qr_payments.update_one({"_id": ref_code}, {"$set": {
-            "status":         "approved",
-            "credited":       True,
-            "slip_uploaded":  True,
-            "slip_image_url": slip_image_url,
-            "uploaded_at":    datetime.now(timezone.utc),
-            "approved_at":    datetime.now(timezone.utc),
-            "transaction_id": ocr_result.get("transaction_id"),
-            "auto_verified":  True,
-        }})
-        return jsonify({
-            "status":        True,
-            "auto_verified": True,
-            "message":       f"เติมเงินสำเร็จ {payment['amount']:.2f} ฿ (ระบบตรวจสอบและเติมเงินอัตโนมัติสำเร็จ)",
-        })
-    else:
-        # If it is a duplicate slip, reject it immediately to prevent double spending
-        if ocr_result.get("is_duplicate"):
-            db.pending_qr_payments.update_one({"_id": ref_code}, {"$set": {
-                "status":         "rejected",
-                "slip_uploaded":  True,
-                "slip_image_url": slip_image_url,
-                "uploaded_at":    datetime.now(timezone.utc),
-                "rejected_at":    datetime.now(timezone.utc),
-                "reject_reason":  ocr_result.get("message", "สลิปนี้ถูกใช้งานไปแล้ว"),
-                "transaction_id": ocr_result.get("transaction_id"),
-            }})
-            return jsonify({
-                "status":  False,
-                "message": ocr_result.get("message", "สลิปนี้ถูกใช้งานยืนยันชำระเงินไปแล้วในระบบ"),
-            }), 400
-        else:
-            # General mismatch or OCR read error -> Fallback to manual admin review
-            db.pending_qr_payments.update_one({"_id": ref_code}, {"$set": {
-                "status":         "pending_review",
-                "slip_uploaded":  True,
-                "slip_image_url": slip_image_url,
-                "uploaded_at":    datetime.now(timezone.utc),
-                "transaction_id": ocr_result.get("transaction_id"),
-                "ocr_failed_reason": ocr_result.get("message"),
-            }})
-            return jsonify({
-                "status":        True,
-                "auto_verified": False,
-                "message":       "ส่งสลิปสำเร็จ กำลังรอแอดมินตรวจสอบแบบปกติ (ไม่สามารถตรวจสลิปแบบอัตโนมัติได้)",
-            })
+    except Exception as e:
+        db.pending_orders.update_one({"_id": pending_id}, {"$set": {"status": "failed", "fail_reason": str(e)}})
+        return jsonify({"status": False, "msg": f"สร้างรายการชำระเงินไม่สำเร็จ: {str(e)}"}), 502
+
+    db.pending_orders.update_one({"_id": pending_id}, {"$set": {"session_id": session.id}})
+    return jsonify({"status": True, "url": session.url, "pending_id": pending_id})
 
 
-# ─── TOPUP LOGS ──────────────────────────────────────────────────────────────
-
-@payment_bp.route('/me/topup/logs', methods=['GET'])
+@payment_bp.route('/confirm', methods=['POST'])
 @auth_required
-def my_topup_logs():
+def confirm_payment():
+    """Called from the success page — finalize if Stripe says the session is paid.
+    Idempotent (also safe alongside the webhook)."""
     db = get_db()
-    user_id = ObjectId(g.user)
+    session_id = (request.json or {}).get("session_id")
+    if not session_id:
+        return jsonify({"status": False, "msg": "ไม่พบ session_id"}), 400
+    try:
+        session = stripe_service.retrieve_session(session_id)
+    except Exception as e:
+        return jsonify({"status": False, "msg": f"ตรวจสอบการชำระเงินไม่สำเร็จ: {str(e)}"}), 502
 
-    payments = db.pending_qr_payments.find(
-        {"user_id": user_id},
-        {"_id": 1, "amount": 1, "created_at": 1, "status": 1, "credited": 1}
-    ).sort("created_at", -1)
+    if session.get("payment_status") != "paid":
+        return jsonify({"status": False, "msg": "ยังไม่ได้รับชำระเงิน"}), 402
 
-    logs = []
-    for p in payments:
-        logs.append({
-            "ref":        p["_id"],
-            "amount":     p["amount"],
-            "created_at": p["created_at"].isoformat() if p.get("created_at") else "",
-            "status":     p.get("status", "pending"),
-            "credited":   p.get("credited", False),
-        })
+    pending_id = (session.get("metadata") or {}).get("pending_order_id") or session.get("client_reference_id")
+    pending = db.pending_orders.find_one({"_id": pending_id})
+    if not pending:
+        return jsonify({"status": False, "msg": "ไม่พบคำสั่งซื้อ"}), 404
+    if str(pending.get("user_id")) != str(g.user):
+        return jsonify({"status": False, "msg": "ไม่มีสิทธิ์เข้าถึงคำสั่งซื้อนี้"}), 403
 
-    return jsonify({"status": True, "results": logs})
+    ok, res, code = finalize_order(db, pending, payment_ref=session.get("payment_intent"))
+    return jsonify(res), code
 
 
-# ─── TRUEMONEY ซองอั่งเป่า ────────────────────────────────────────────────────
-
-@payment_bp.route('/truemoney-angpao', methods=['POST'])
-@auth_required
-def truemoney_angpao():
-    data = request.json or {}
-    voucher_url = data.get('voucher_url', '').strip()
-    if not voucher_url:
-        return jsonify({"status": False, "message": "กรุณากรอกลิงก์ซองอั่งเป่า"}), 400
-
-    # Extract hash from URL or treat as raw hash
-    voucher_hash = voucher_url
-    if 'gift.truemoney.com' in voucher_url:
-        try:
-            parsed = urlparse(voucher_url)
-            qs = parse_qs(parsed.query)
-            voucher_hash = (qs.get('v') or [''])[0]
-        except Exception:
-            voucher_hash = ''
-
-    if not voucher_hash:
-        return jsonify({"status": False, "message": "ลิงก์ซองอั่งเป่าไม่ถูกต้อง"}), 400
-
+@payment_bp.route('/stripe/webhook', methods=['POST'])
+def stripe_webhook():
+    """Stripe → us. Verifies signature and finalizes on checkout.session.completed."""
     db = get_db()
-    user_id = ObjectId(g.user)
-    user = db.users.find_one({"_id": user_id}, {"username": 1})
+    payload = request.get_data()
+    sig = request.headers.get("Stripe-Signature", "")
 
-    # Prevent duplicate redemption
-    if db.truemoney_vouchers.find_one({"voucher_hash": voucher_hash, "status": "approved"}):
-        return jsonify({"status": False, "message": "ซองอั่งเป่านี้ถูกใช้ไปแล้ว"}), 400
-
-    truemoney_phone = os.getenv('TRUEMONEY_PHONE', '').strip()
-
-    if truemoney_phone:
-        # Auto-redeem via TrueMoney API
-        try:
-            resp = http_requests.post(
-                f"https://gift.truemoney.com/campaign/vouchers/{voucher_hash}/redeem",
-                json={"mobile": truemoney_phone, "voucher_hash": voucher_hash},
-                timeout=10,
-            )
-            resp_data = resp.json()
-        except Exception as e:
-            resp_data = {}
-
-        tm_status = resp_data.get('status', {})
-        if isinstance(tm_status, dict):
-            success = tm_status.get('code') == 'SUCCESS'
+    secret = os.getenv("STRIPE_WEBHOOK_SECRET", "").strip()
+    try:
+        if secret:
+            event = stripe_service.construct_webhook_event(payload, sig)
         else:
-            success = False
+            # No signing secret configured (e.g. before setup) — parse unverified.
+            import json
+            event = json.loads(payload)
+    except Exception as e:
+        return jsonify({"error": f"Invalid webhook: {str(e)}"}), 400
 
-        if success:
-            amount_baht = float(resp_data.get('data', {}).get('voucher', {}).get('redeemAmount', 0)) / 100
-            db.users.update_one({"_id": user_id}, {"$inc": {"credit": amount_baht}})
-            db.truemoney_vouchers.insert_one({
-                "user_id":      user_id,
-                "username":     user.get("username", "") if user else "",
-                "voucher_hash": voucher_hash,
-                "voucher_url":  voucher_url,
-                "amount":       amount_baht,
-                "status":       "approved",
-                "auto_redeemed": True,
-                "created_at":   datetime.now(timezone.utc),
-            })
-            return jsonify({"status": True, "message": f"เติมเงินสำเร็จ {amount_baht:.2f} บาท"})
+    etype = (event.get("type") if isinstance(event, dict) else getattr(event, "type", None))
+    if etype == "checkout.session.completed":
+        session = (event["data"]["object"] if isinstance(event, dict) else event.data.object)
+        if session.get("payment_status") == "paid":
+            pending_id = (session.get("metadata") or {}).get("pending_order_id") or session.get("client_reference_id")
+            pending = db.pending_orders.find_one({"_id": pending_id})
+            if pending:
+                finalize_order(db, pending, payment_ref=session.get("payment_intent"))
 
-        # API returned error — store for admin
-        error_msg = ""
-        if isinstance(tm_status, dict):
-            error_msg = tm_status.get('message', '')
-
-    # No phone configured or auto-redeem failed → queue for admin review
-    existing = db.truemoney_vouchers.find_one({"voucher_hash": voucher_hash, "status": "pending_review"})
-    if existing:
-        return jsonify({"status": False, "message": "ซองอั่งเป่านี้รอการตรวจสอบอยู่แล้ว"}), 400
-
-    db.truemoney_vouchers.insert_one({
-        "user_id":      user_id,
-        "username":     user.get("username", "") if user else "",
-        "voucher_hash": voucher_hash,
-        "voucher_url":  voucher_url,
-        "amount":       None,
-        "status":       "pending_review",
-        "auto_redeemed": False,
-        "created_at":   datetime.now(timezone.utc),
-    })
-    return jsonify({"status": True, "message": "ส่งซองอั่งเป่าสำเร็จ แอดมินจะตรวจสอบและเติมเงินให้ภายใน 5-15 นาที"})
+    return jsonify({"received": True}), 200
 
 
-# ─── REDEEM CODE ─────────────────────────────────────────────────────────────
+# ─── REDEEM CODE (store credit / gift card) ──────────────────────────────────
 
 @payment_bp.route('/redeem-code', methods=['POST'])
 @auth_required
@@ -399,12 +184,27 @@ def redeem_code():
     if not user:
         return jsonify({"status": False, "message": "ไม่พบ user"}), 500
 
-    # Atomic: mark code used + add credit in separate ops (code marked first to prevent double-use)
-    db.topup_codes.update_one({"code": code, "used": {"$ne": True}}, {"$set": {"used": True, "used_by": g.user}})
+    # Mark used first (guards against double-use), then grant store credit
+    result = db.topup_codes.update_one({"code": code, "used": {"$ne": True}}, {"$set": {"used": True, "used_by": g.user}})
+    if result.modified_count == 0:
+        return jsonify({"status": False, "message": "รหัสนี้ถูกใช้ไปแล้ว"}), 400
     db.users.update_one({"_id": user_id}, {"$inc": {"credit": topup_code["amount"]}})
     new_balance = float(user.get("credit", 0)) + topup_code["amount"]
+
+    try:
+        send_discord_log_async(
+            event_type="🎁 ใช้โค้ดเติม Store Credit",
+            request_headers=dict(request.headers),
+            ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
+            host_url=request.host_url,
+            referrer=request.referrer,
+            data={"User": user.get("username", "—"), "Amount": f"{topup_code['amount']:.2f} ฿", "Code": code},
+        )
+    except Exception:
+        pass
+
     return jsonify({
-        "status":      True,
-        "message":     f"เติมเงินสำเร็จ {topup_code['amount']:.2f} บาท",
+        "status": True,
+        "message": f"เติม Store Credit สำเร็จ {topup_code['amount']:.2f} บาท",
         "new_balance": new_balance,
     })
