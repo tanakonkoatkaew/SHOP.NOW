@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Menu, X, Wallet, User, LogOut, ChevronDown, Search, ShieldCheck } from 'lucide-react'
+import { Menu, X, Wallet, User, LogOut, ChevronDown, Search, ShieldCheck, ShoppingCart, Star } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import { useCart } from '../hooks/useCart'
 import NotificationBell from './NotificationBell'
 
 const navLinks = [
@@ -14,6 +15,7 @@ const navLinks = [
 
 export default function Navbar() {
   const { user, logout } = useAuth()
+  const { count } = useCart()
   const location = useLocation()
   const [open, setOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -64,6 +66,15 @@ export default function Navbar() {
               <Search size={20} />
             </Link>
 
+            <Link to="/cart" className="relative p-2 text-gray-500 hover:text-black transition-colors">
+              <ShoppingCart size={20} />
+              {count > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-amber-500 text-white text-[10px] font-black rounded-full flex items-center justify-center">
+                  {count > 99 ? '99+' : count}
+                </span>
+              )}
+            </Link>
+
             {user && <NotificationBell />}
 
             {user ? (
@@ -87,8 +98,16 @@ export default function Navbar() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -8 }}
                       transition={{ duration: 0.15 }}
-                      className="absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden"
+                      className="absolute right-0 top-full mt-2 w-56 bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden"
                     >
+                      <div className="px-4 py-3 bg-[#F2F0F1] flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-xs text-gray-500"><Wallet size={13} /> เครดิต</span>
+                        <span className="text-sm font-bold text-black">{parseFloat(user.credit || 0).toFixed(2)} ฿</span>
+                      </div>
+                      <div className="px-4 py-2.5 border-b border-gray-100 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5 text-xs text-gray-500"><Star size={13} className="fill-amber-400 text-amber-400" /> แต้มสะสม</span>
+                        <span className="text-sm font-bold text-emerald-600">{parseFloat(user.reward || 0).toFixed(2)}</span>
+                      </div>
                       <Link to="/profile" onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-3 px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                         <User size={15} /> โปรไฟล์
@@ -157,6 +176,11 @@ export default function Navbar() {
                   {label}
                 </Link>
               ))}
+              <Link to="/cart" onClick={() => setOpen(false)}
+                className="flex items-center justify-between px-3 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50 rounded-xl transition-colors">
+                <span className="flex items-center gap-2"><ShoppingCart size={16} /> ตะกร้าสินค้า</span>
+                {count > 0 && <span className="min-w-[20px] h-5 px-1.5 bg-amber-500 text-white text-xs font-black rounded-full flex items-center justify-center">{count}</span>}
+              </Link>
               {user ? (
                 <div className="pt-3 border-t border-gray-100 space-y-1">
                   <p className="px-3 py-2 text-sm text-gray-500">

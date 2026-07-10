@@ -14,6 +14,7 @@ const CATS = [
 
 const SORT_OPTIONS = [
   { label: 'ล่าสุด',         value: 'new' },
+  { label: 'ลดราคาก่อน',     value: 'sale' },
   { label: 'ราคา: น้อย-มาก', value: 'price_asc' },
   { label: 'ราคา: มาก-น้อย', value: 'price_desc' },
 ]
@@ -42,6 +43,8 @@ export default function Products() {
   const [q, setQ]               = useState('')
   const [sort, setSort]         = useState('new')
   const [maxPrice, setMaxPrice] = useState(5000)
+  const [inStock, setInStock]   = useState(false)
+  const [saleOnly, setSaleOnly] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
@@ -57,15 +60,20 @@ export default function Products() {
     if (cat !== 'all') res = res.filter(p => String(p.cate) === cat || p.name?.toLowerCase().includes(cat))
     if (q.trim()) res = res.filter(p => p.name?.toLowerCase().includes(q.toLowerCase()) || p.description?.toLowerCase().includes(q.toLowerCase()))
     res = res.filter(p => parseFloat(p.price) <= maxPrice)
+    if (inStock) res = res.filter(p => (p.stock ?? 0) > 0)
+    if (saleOnly) res = res.filter(p => p.on_sale)
     if (sort === 'price_asc')  res = [...res].sort((a, b) => parseFloat(a.price) - parseFloat(b.price))
     if (sort === 'price_desc') res = [...res].sort((a, b) => parseFloat(b.price) - parseFloat(a.price))
+    if (sort === 'sale')       res = [...res].sort((a, b) => (b.on_sale ? 1 : 0) - (a.on_sale ? 1 : 0))
     setFiltered(res)
-  }, [cat, q, sort, maxPrice, all])
+  }, [cat, q, sort, maxPrice, inStock, saleOnly, all])
 
   const activeFilters = [
     cat !== 'all' && CATS.find(c => c.value === cat)?.label,
     q.trim() && `"${q}"`,
     maxPrice < 5000 && `≤ ${maxPrice} ฿`,
+    inStock && 'มีสินค้า',
+    saleOnly && 'ลดราคา',
   ].filter(Boolean)
 
   return (
@@ -127,6 +135,19 @@ export default function Products() {
               </div>
             </FilterSection>
 
+            <FilterSection title="ตัวเลือก">
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={inStock} onChange={e => setInStock(e.target.checked)} className="w-4 h-4 accent-black" />
+                  <span className={`text-sm ${inStock ? 'font-bold text-black' : 'text-gray-600'}`}>เฉพาะที่มีสินค้า</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input type="checkbox" checked={saleOnly} onChange={e => setSaleOnly(e.target.checked)} className="w-4 h-4 accent-black" />
+                  <span className={`text-sm ${saleOnly ? 'font-bold text-red-500' : 'text-gray-600'}`}>กำลังลดราคา 🔥</span>
+                </label>
+              </div>
+            </FilterSection>
+
           </div>
         </aside>
 
@@ -181,7 +202,7 @@ export default function Products() {
                 </span>
               ))}
               <button
-                onClick={() => { setCat('all'); setQ(''); setMaxPrice(5000); setSort('new') }}
+                onClick={() => { setCat('all'); setQ(''); setMaxPrice(5000); setSort('new'); setInStock(false); setSaleOnly(false) }}
                 className="px-3 py-1 border-2 border-gray-300 text-xs font-semibold rounded-full hover:border-black transition-colors"
               >
                 ล้างทั้งหมด

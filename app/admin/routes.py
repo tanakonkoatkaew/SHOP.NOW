@@ -1,14 +1,29 @@
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify, g
 from bson import ObjectId
 from app.extensions import get_db
 from app.middlewares import admin_required
 from app.utils.notify import push_notification
 from app.utils.coupons import coupon_usable
+from app.utils.pricing import effective_price
+from app.utils.receipt import send_status_update, ORDER_STATUSES, STATUS_LABEL
 
 admin_bp = Blueprint('admin', __name__)
+
+
+def _parse_dt(value):
+    """Parse an ISO / datetime-local string into an aware UTC datetime, or None."""
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    try:
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 SLIP_FOLDER    = os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads', 'slips')
 PRODUCT_FOLDER = os.path.join(os.path.dirname(__file__), '..', 'static', 'uploads', 'products')
@@ -43,6 +58,48 @@ def stats():
         for b in best_sellers
     ]
 
+    # Revenue over the last 14 days (by order line_total, falling back to price*qty)
+    since = datetime.now(timezone.utc) - timedelta(days=13)
+    daily_raw = list(db.orders.aggregate([
+        {"$match": {"dt_purchased": {"$gte": since}}},
+        {"$group": {
+            "_id": {"$dateToString": {"format": "%Y-%m-%d", "date": "$dt_purchased"}},
+            "revenue": {"$sum": {"$ifNull": ["$line_total", {"$multiply": ["$product_price", {"$ifNull": ["$quantity", 1]}]}]}},
+            "orders": {"$sum": 1},
+        }},
+    ]))
+    daily_map = {d["_id"]: d for d in daily_raw}
+    revenue_by_day = []
+    for i in range(14):
+        day = (since + timedelta(days=i)).strftime("%Y-%m-%d")
+        d = daily_map.get(day, {})
+        revenue_by_day.append({
+            "date": day,
+            "revenue": round(d.get("revenue", 0), 2),
+            "orders": d.get("orders", 0),
+        })
+
+    # Sales split by category
+    cat_raw = list(db.orders.aggregate([
+        {"$group": {
+            "_id": "$category_name",
+            "qty": {"$sum": {"$ifNull": ["$quantity", 1]}},
+            "revenue": {"$sum": {"$ifNull": ["$line_total", {"$multiply": ["$product_price", {"$ifNull": ["$quantity", 1]}]}]}},
+        }},
+        {"$sort": {"revenue": -1}},
+    ]))
+    sales_by_category = [
+        {"cate": c["_id"] or "อื่นๆ", "qty": c.get("qty", 0), "revenue": round(c.get("revenue", 0), 2)}
+        for c in cat_raw
+    ]
+
+    # Orders awaiting fulfilment (not yet completed / terminal)
+    pending_orders = db.orders.count_documents({"status": {"$in": ["pending", "processing", "shipped"]}})
+
+    # Loyalty points currently held across all users
+    pts = list(db.users.aggregate([{"$group": {"_id": None, "total": {"$sum": {"$ifNull": ["$reward", 0]}}}}]))
+    points_outstanding = round(pts[0]["total"], 2) if pts else 0
+
     return jsonify({
         "status": True,
         "users":         db.users.count_documents({}),
@@ -50,7 +107,11 @@ def stats():
         "pending_slips": pending_slips,
         "total_revenue": round(revenue, 2),
         "orders":        db.orders.count_documents({}),
+        "pending_orders": pending_orders,
+        "points_outstanding": points_outstanding,
         "top_products":  top_products,
+        "revenue_by_day": revenue_by_day,
+        "sales_by_category": sales_by_category,
     })
 
 
@@ -157,6 +218,9 @@ def list_products():
     products = db.products.find().sort("name", 1)
     results = []
     for p in products:
+        ep = effective_price(p)
+        start = p.get("sale_start")
+        end = p.get("sale_end")
         results.append({
             "id":          str(p["_id"]),
             "name":        p.get("name", ""),
@@ -166,6 +230,10 @@ def list_products():
             "stock":       p.get("stock", 0),
             "warranty":    p.get("warranty", False),
             "description": p.get("description", ""),
+            "sale_price":  p.get("sale_price", 0) or 0,
+            "sale_start":  start.isoformat() if hasattr(start, "isoformat") else (start or ""),
+            "sale_end":    end.isoformat() if hasattr(end, "isoformat") else (end or ""),
+            "on_sale":     ep["on_sale"],
         })
     return jsonify({"status": True, "results": results})
 
@@ -186,6 +254,9 @@ def create_product():
         "stock":       int(data.get("stock", 0)),
         "warranty":    bool(data.get("warranty", False)),
         "description": data.get("description", ""),
+        "sale_price":  float(data.get("sale_price") or 0),
+        "sale_start":  _parse_dt(data.get("sale_start")),
+        "sale_end":    _parse_dt(data.get("sale_end")),
     }
     result = db.products.insert_one(doc)
     return jsonify({"status": True, "id": str(result.inserted_id), "message": "เพิ่มสินค้าสำเร็จ"})
@@ -209,6 +280,9 @@ def update_product(product_id):
     if "stock"       in data: updates["stock"]       = int(data["stock"])
     if "warranty"    in data: updates["warranty"]    = bool(data["warranty"])
     if "description" in data: updates["description"] = data["description"]
+    if "sale_price"  in data: updates["sale_price"]  = float(data.get("sale_price") or 0)
+    if "sale_start"  in data: updates["sale_start"]  = _parse_dt(data.get("sale_start"))
+    if "sale_end"    in data: updates["sale_end"]    = _parse_dt(data.get("sale_end"))
 
     db.products.update_one({"_id": oid}, {"$set": updates})
     return jsonify({"status": True, "message": "อัพเดทสินค้าสำเร็จ"})
@@ -497,7 +571,100 @@ def list_user_orders(user_id):
             "product_price": o.get("product_price", 0),
             "product_image": o.get("product_image", ""),
             "quantity": o.get("quantity", 1),
+            "status": o.get("status", "completed"),
             "dt_purchased": purchased_at,
             "refund": o.get("refund", False)
         })
     return jsonify({"status": True, "results": results})
+
+
+# ─── ORDER / FULFILMENT MANAGEMENT ───────────────────────────────────────────
+
+@admin_bp.route('/orders', methods=['GET'])
+@admin_required
+def list_orders():
+    """All orders grouped by receipt, most recent first (optional ?status=)."""
+    db = get_db()
+    status = request.args.get("status", "all")
+    query = {} if status == "all" else {"status": status}
+    docs = db.orders.find(query).sort("dt_purchased", -1).limit(500)
+
+    receipts = {}
+    order = []
+    for o in docs:
+        rid = o.get("receipt_id") or o["_id"]
+        purchased = o.get("dt_purchased")
+        purchased_str = purchased.strftime('%Y-%m-%d %H:%M:%S') if hasattr(purchased, "strftime") else str(purchased or "")
+        if rid not in receipts:
+            receipts[rid] = {
+                "receipt_id": rid,
+                "user_id": str(o.get("user_id", "")),
+                "status": o.get("status", "completed"),
+                "dt_purchased": purchased_str,
+                "items": [],
+                "total": 0.0,
+            }
+            order.append(rid)
+        line_total = o.get("line_total")
+        if line_total is None:
+            line_total = float(o.get("product_price", 0)) * int(o.get("quantity", 1))
+        receipts[rid]["items"].append({
+            "name": o.get("product_name", ""),
+            "quantity": o.get("quantity", 1),
+        })
+        receipts[rid]["total"] += float(line_total)
+
+    # Attach usernames
+    user_ids = {receipts[r]["user_id"] for r in order if receipts[r]["user_id"]}
+    name_map = {}
+    for uid in user_ids:
+        try:
+            u = db.users.find_one({"_id": ObjectId(uid)}, {"username": 1})
+            if u:
+                name_map[uid] = u.get("username", "")
+        except Exception:
+            pass
+    for r in order:
+        receipts[r]["username"] = name_map.get(receipts[r]["user_id"], "—")
+
+    return jsonify({"status": True, "results": [receipts[r] for r in order]})
+
+
+@admin_bp.route('/orders/<receipt_id>/status', methods=['POST'])
+@admin_required
+def update_order_status(receipt_id):
+    db = get_db()
+    new_status = ((request.json or {}).get("status") or "").strip()
+    valid = set(ORDER_STATUSES) | {"refunded", "cancelled"}
+    if new_status not in valid:
+        return jsonify({"status": False, "message": "สถานะไม่ถูกต้อง"}), 400
+
+    # Orders created before receipt grouping fall back to their own _id
+    match = {"$or": [{"receipt_id": receipt_id}, {"_id": receipt_id}]}
+    orders = list(db.orders.find(match))
+    if not orders:
+        return jsonify({"status": False, "message": "ไม่พบคำสั่งซื้อ"}), 404
+
+    set_fields = {"status": new_status}
+    if new_status == "refunded":
+        set_fields["refund"] = True
+    db.orders.update_many(match, {"$set": set_fields})
+
+    user_id = orders[0].get("user_id")
+    item_names = [o.get("product_name", "") for o in orders]
+    label = STATUS_LABEL.get(new_status, new_status)
+    if user_id:
+        push_notification(
+            db, user_id,
+            title=f"อัปเดตคำสั่งซื้อ: {label}",
+            body=f"คำสั่งซื้อ #{str(receipt_id)[:8].upper()} เปลี่ยนสถานะเป็น \"{label}\"",
+            ntype="info" if new_status not in ("refunded", "cancelled") else "warning",
+        )
+        try:
+            user = db.users.find_one({"_id": ObjectId(user_id)})
+            if user:
+                send_status_update(user, str(receipt_id), new_status, item_names)
+        except Exception as e:
+            print("[admin] status email failed:", e)
+
+    return jsonify({"status": True, "message": f"อัปเดตสถานะเป็น \"{label}\" แล้ว"})

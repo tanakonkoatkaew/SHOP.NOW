@@ -233,8 +233,10 @@ def get_user_basic():
     return jsonify({
         "status": True,
         "user": {
+            "id":       str(user["_id"]),
             "username": user["username"],
             "credit":   float(user.get("credit", 0.0)),
+            "reward":   float(user.get("reward", 0.0)),
             "is_admin": bool(user.get("is_admin", False)),
         }
     })
@@ -559,13 +561,157 @@ def google_callback():
             updates["avatar"] = picture
         if updates:
             db.users.update_one({"_id": user["_id"]}, {"$set": updates})
-            
+
     # 4. Generate JWT token
     token = jwt.encode({
         'user_id': str(user['_id']),
         'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
     }, SECRET_KEY, algorithm="HS256")
-    
+
+    # 5. Redirect back to frontend
+    return redirect(f"/login?token={token}")
+
+
+# ─── FACEBOOK OAUTH2 LOGIN ───────────────────────────────────────────────────
+
+FACEBOOK_API_VERSION = "v19.0"
+
+
+@auth_bp.route('/facebook')
+def facebook_redirect():
+    client_id = os.getenv("FACEBOOK_CLIENT_ID", "").strip()
+    redirect_uri = os.getenv("FACEBOOK_REDIRECT_URI", "").strip()
+    if not client_id or not redirect_uri:
+        return "Facebook OAuth is not configured in .env", 400
+
+    facebook_auth_url = (
+        f"https://www.facebook.com/{FACEBOOK_API_VERSION}/dialog/oauth?"
+        f"client_id={client_id}&redirect_uri={redirect_uri}&"
+        f"response_type=code&scope=email,public_profile"
+    )
+    from flask import redirect
+    return redirect(facebook_auth_url)
+
+
+@auth_bp.route('/facebook/callback')
+def facebook_callback():
+    from flask import redirect
+    code = request.args.get('code')
+    if not code:
+        return "Authorization code not found in request", 400
+
+    client_id = os.getenv("FACEBOOK_CLIENT_ID", "").strip()
+    client_secret = os.getenv("FACEBOOK_CLIENT_SECRET", "").strip()
+    redirect_uri = os.getenv("FACEBOOK_REDIRECT_URI", "").strip()
+
+    if not client_id or not client_secret or not redirect_uri:
+        return "Facebook OAuth configuration error", 400
+
+    import requests as http_requests
+
+    # 1. Exchange code for access token
+    token_url = f"https://graph.facebook.com/{FACEBOOK_API_VERSION}/oauth/access_token"
+    params = {
+        "client_id": client_id,
+        "client_secret": client_secret,
+        "redirect_uri": redirect_uri,
+        "code": code,
+    }
+    try:
+        token_resp = http_requests.get(token_url, params=params, timeout=10)
+        if token_resp.status_code != 200:
+            return f"Failed to retrieve access token: {token_resp.text}", 400
+        token_data = token_resp.json()
+    except Exception as e:
+        return f"Network error during token exchange: {str(e)}", 500
+
+    access_token = token_data.get("access_token")
+    if not access_token:
+        return "Access token not found in response", 400
+
+    # 2. Get user info from Graph API
+    user_url = f"https://graph.facebook.com/{FACEBOOK_API_VERSION}/me"
+    try:
+        user_resp = http_requests.get(
+            user_url,
+            params={"fields": "id,name,email,picture.width(256)", "access_token": access_token},
+            timeout=10,
+        )
+        if user_resp.status_code != 200:
+            return f"Failed to retrieve user info from Facebook: {user_resp.text}", 400
+        user_data = user_resp.json()
+    except Exception as e:
+        return f"Network error during user info fetch: {str(e)}", 500
+
+    facebook_user_id = user_data.get("id")
+    facebook_name = user_data.get("name")
+    facebook_email = user_data.get("email", "")
+    try:
+        picture = user_data.get("picture", {}).get("data", {}).get("url", "")
+    except Exception:
+        picture = ""
+
+    if not facebook_user_id or not facebook_name:
+        return "Incomplete user profile received from Facebook", 400
+
+    # 3. Find or create user in MongoDB
+    db = get_db()
+
+    user = db.users.find_one({"facebook_user_id": facebook_user_id})
+
+    if not user and facebook_email:
+        user = db.users.find_one({"email": facebook_email})
+        if user:
+            db.users.update_one({"_id": user["_id"]}, {"$set": {"facebook_user_id": facebook_user_id}})
+
+    if not user:
+        base_username = facebook_name
+        username = base_username
+        counter = 1
+        while db.users.find_one({"username": username}):
+            username = f"{base_username}{counter}"
+            counter += 1
+
+        import uuid
+        placeholder_pw = bcrypt.hashpw(uuid.uuid4().hex.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+
+        user_doc = {
+            "email":            facebook_email,
+            "username":         username,
+            "password":         placeholder_pw,
+            "credit":           0.0,
+            "reward":           0.0,
+            "facebook_user_id": facebook_user_id,
+            "avatar":           picture,
+        }
+        db.users.insert_one(user_doc)
+        user = user_doc
+
+        send_discord_log_async(
+            event_type="🆕 สมัครสมาชิกใหม่ (ผ่าน Facebook)",
+            request_headers=dict(request.headers),
+            ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
+            host_url=request.host_url,
+            referrer=request.referrer,
+            data={
+                "Username": username,
+                "Email": facebook_email,
+                "Facebook ID": facebook_user_id,
+            },
+        )
+    else:
+        updates = {}
+        if not user.get("avatar") and picture:
+            updates["avatar"] = picture
+        if updates:
+            db.users.update_one({"_id": user["_id"]}, {"$set": updates})
+
+    # 4. Generate JWT token
+    token = jwt.encode({
+        'user_id': str(user['_id']),
+        'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+    }, SECRET_KEY, algorithm="HS256")
+
     # 5. Redirect back to frontend
     return redirect(f"/login?token={token}")
 

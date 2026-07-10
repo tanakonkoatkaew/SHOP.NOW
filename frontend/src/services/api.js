@@ -46,7 +46,9 @@ export const api = {
 
   // Orders
   purchaseLogs: () => request('GET', '/products/me/logs/product/0/50'),
+  myOrders:     () => request('GET', '/products/me/orders'),
   buyProduct:   (id, body) => request('POST', `/products/order/product/${id}`, body),
+  checkout:     (body) => request('POST', '/products/checkout', body),
   checkCoupon:  (code) => request('GET', `/products/checkCoupon/${code}`),
 
   // Payment
@@ -91,6 +93,8 @@ export const api = {
     updateUser:    (id, data)=> request('PUT',    `/admin/users/${id}`, data),
     deleteUser:    (id)      => request('DELETE', `/admin/users/${id}`),
     userOrders:    (id)      => request('GET',    `/admin/users/${id}/orders`),
+    orders:        (status)  => request('GET',    `/admin/orders${status && status !== 'all' ? `?status=${status}` : ''}`),
+    updateOrderStatus: (rid, status) => request('POST', `/admin/orders/${rid}/status`, { status }),
     truemoney:          (status) => request('GET',  `/admin/truemoney${status ? `?status=${status}` : ''}`),
     approveTruemoney:   (id, amount) => request('POST', `/admin/truemoney/${id}/approve`, { amount }),
     rejectTruemoney:    (id, reason) => request('POST', `/admin/truemoney/${id}/reject`,  { reason }),

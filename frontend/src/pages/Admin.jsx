@@ -6,6 +6,7 @@ import {
   CheckCircle, XCircle, Pencil, Trash2, Plus,
   X, AlertTriangle, RefreshCw, Upload,
   MessageCircle, Send, Bot, ShieldCheck,
+  Truck, Star, ShoppingBag, Clock, Box, Check,
 } from 'lucide-react'
 import { api } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
@@ -65,6 +66,66 @@ function Modal({ open, title, onClose, children }) {
   )
 }
 
+// ─── ANALYTICS CHARTS ────────────────────────────────────────────────────────
+
+const CAT_COLORS = ['#000000', '#f59e0b', '#3b82f6', '#10b981', '#ef4444', '#8b5cf6']
+
+function RevenueChart({ data }) {
+  const max = Math.max(1, ...data.map(d => d.revenue))
+  const totalPeriod = data.reduce((s, d) => s + d.revenue, 0)
+  return (
+    <div className="bg-white border-2 border-gray-100 rounded-2xl p-6">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-black flex items-center gap-2"><LayoutDashboard size={18} /> รายได้ 14 วันล่าสุด</h3>
+        <span className="text-sm font-bold text-gray-500">{totalPeriod.toLocaleString()} ฿</span>
+      </div>
+      {totalPeriod === 0 ? (
+        <p className="text-sm text-gray-400 py-8 text-center">ยังไม่มีรายได้ในช่วงนี้</p>
+      ) : (
+        <div className="flex items-end gap-1.5 h-40">
+          {data.map((d, i) => (
+            <div key={i} className="flex-1 flex flex-col items-center gap-1 group relative">
+              <div className="w-full bg-[#F2F0F1] rounded-t-md relative flex items-end" style={{ height: '100%' }}>
+                <div className="w-full bg-black rounded-t-md hover:bg-amber-500 transition-colors" style={{ height: `${(d.revenue / max) * 100}%` }} />
+                <div className="absolute -top-8 left-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity bg-black text-white text-[10px] font-bold px-2 py-1 rounded whitespace-nowrap z-10 pointer-events-none">
+                  {d.revenue.toLocaleString()} ฿
+                </div>
+              </div>
+              <span className="text-[9px] text-gray-400">{d.date.slice(8)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CategorySplit({ data }) {
+  const total = data.reduce((s, d) => s + d.revenue, 0)
+  return (
+    <div className="bg-white border-2 border-gray-100 rounded-2xl p-6">
+      <h3 className="text-lg font-black flex items-center gap-2 mb-4"><Package size={18} /> ยอดขายตามหมวด</h3>
+      {total === 0 ? (
+        <p className="text-sm text-gray-400 py-8 text-center">ยังไม่มีข้อมูล</p>
+      ) : (
+        <div className="space-y-3">
+          {data.map((d, i) => (
+            <div key={i}>
+              <div className="flex items-center justify-between mb-1 text-sm">
+                <span className="font-semibold uppercase">{d.cate}</span>
+                <span className="text-gray-500 text-xs">{d.revenue.toLocaleString()} ฿ · {d.qty} ชิ้น</span>
+              </div>
+              <div className="h-2.5 bg-[#F2F0F1] rounded-full overflow-hidden">
+                <div className="h-full rounded-full" style={{ width: `${(d.revenue / total) * 100}%`, background: CAT_COLORS[i % CAT_COLORS.length] }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ─── TAB: DASHBOARD ──────────────────────────────────────────────────────────
 
 function Dashboard() {
@@ -81,12 +142,19 @@ function Dashboard() {
           <RefreshCw size={14} /> รีเฟรช
         </button>
       </div>
-      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         <StatCard label="ผู้ใช้ทั้งหมด" value={stats.users} icon={Users} />
         <StatCard label="สินค้า" value={stats.products} icon={Package} />
         <StatCard label="สลิปรอตรวจ" value={stats.pending_slips} icon={FileImage} sub="รอการอนุมัติ" />
-        <StatCard label="คำสั่งซื้อ" value={stats.orders} icon={LayoutDashboard} />
+        <StatCard label="รอจัดส่ง" value={stats.pending_orders ?? 0} icon={Truck} sub="ยังไม่สำเร็จ" />
         <StatCard label="รายได้รวม" value={`${(stats.total_revenue || 0).toLocaleString()} ฿`} icon={CheckCircle} />
+        <StatCard label="แต้มสะสมคงค้าง" value={(stats.points_outstanding ?? 0).toLocaleString()} icon={Star} sub="ทั้งระบบ" />
+      </div>
+
+      {/* Revenue chart + category split */}
+      <div className="grid lg:grid-cols-[1.6fr_1fr] gap-4">
+        <RevenueChart data={stats.revenue_by_day || []} />
+        <CategorySplit data={stats.sales_by_category || []} />
       </div>
 
       {/* Best sellers */}
@@ -369,10 +437,18 @@ function SlipManagement() {
 
 // ─── TAB: PRODUCT MANAGEMENT ─────────────────────────────────────────────────
 
-const EMPTY_PRODUCT = { name: '', price: '', image: '', cate: 'game', stock: 0, warranty: false, description: '' }
+const EMPTY_PRODUCT = { name: '', price: '', image: '', cate: 'game', stock: 0, warranty: false, description: '', sale_price: '', sale_start: '', sale_end: '' }
+
+// datetime-local wants "YYYY-MM-DDTHH:MM"; backend sends ISO with offset
+const toLocalInput = (iso) => (iso ? String(iso).slice(0, 16) : '')
 
 function ProductForm({ initial = EMPTY_PRODUCT, onSave, onCancel, saving }) {
-  const [form, setForm] = useState(initial)
+  const [form, setForm] = useState({
+    ...initial,
+    sale_price: initial.sale_price || '',
+    sale_start: toLocalInput(initial.sale_start),
+    sale_end: toLocalInput(initial.sale_end),
+  })
   const [imgFile, setImgFile] = useState(null)
   const [preview, setPreview] = useState(initial.image || '')
   const [imgTab, setImgTab] = useState('url') // 'url' | 'upload'
@@ -484,6 +560,30 @@ function ProductForm({ initial = EMPTY_PRODUCT, onSave, onCancel, saving }) {
           <label className="block text-xs font-black uppercase mb-1">คำอธิบาย</label>
           <textarea value={form.description} onChange={e => set('description', e.target.value)} rows={3}
             className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-black text-sm resize-none transition-colors" />
+        </div>
+
+        {/* Flash sale */}
+        <div className="col-span-2 border-2 border-dashed border-amber-200 bg-amber-50/40 rounded-xl p-4 space-y-3">
+          <p className="text-xs font-black uppercase text-amber-600 flex items-center gap-1.5"><Star size={13} /> Flash Sale (ไม่บังคับ)</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <label className="block text-[11px] font-bold text-gray-500 mb-1">ราคาลด (฿) — เว้นว่าง = ไม่ลด</label>
+              <input type="number" min="0" value={form.sale_price} onChange={e => set('sale_price', e.target.value)}
+                placeholder="เช่น 199"
+                className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-amber-400 outline-none" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-gray-500 mb-1">เริ่มลด</label>
+              <input type="datetime-local" value={form.sale_start} onChange={e => set('sale_start', e.target.value)}
+                className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-amber-400 outline-none" />
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-gray-500 mb-1">สิ้นสุด</label>
+              <input type="datetime-local" value={form.sale_end} onChange={e => set('sale_end', e.target.value)}
+                className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-amber-400 outline-none" />
+            </div>
+          </div>
+          <p className="text-[11px] text-gray-400">เว้นวันเวลา = ลดทันทีและไม่มีกำหนดหมด · ราคาลดต้องต่ำกว่าราคาปกติ</p>
         </div>
       </div>
       <div className="flex gap-2 justify-end pt-2">
@@ -1181,10 +1281,112 @@ function ChatManagement() {
   )
 }
 
+// ─── TAB: ORDER MANAGEMENT ───────────────────────────────────────────────────
+
+const ORDER_STATUS = {
+  pending:    { label: 'รอดำเนินการ', icon: Clock,       cls: 'bg-gray-100 text-gray-600' },
+  processing: { label: 'กำลังจัดส่ง',  icon: Box,         cls: 'bg-blue-100 text-blue-700' },
+  shipped:    { label: 'จัดส่งแล้ว',   icon: Truck,       cls: 'bg-amber-100 text-amber-700' },
+  completed:  { label: 'สำเร็จ',       icon: Check,       cls: 'bg-green-100 text-green-700' },
+  refunded:   { label: 'คืนเงิน',      icon: XCircle,     cls: 'bg-orange-100 text-orange-600' },
+  cancelled:  { label: 'ยกเลิก',       icon: XCircle,     cls: 'bg-red-100 text-red-600' },
+}
+const STATUS_FLOW = ['pending', 'processing', 'shipped', 'completed']
+
+function OrderManagement() {
+  const [orders, setOrders] = useState([])
+  const [filter, setFilter] = useState('all')
+  const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState('')
+  const [busy, setBusy] = useState(null)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    api.admin.orders(filter).then(({ data }) => {
+      setOrders(data.results || [])
+      setLoading(false)
+    })
+  }, [filter])
+
+  useEffect(() => { load() }, [load])
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  const setStatus = async (rid, status) => {
+    setBusy(rid)
+    const { ok, data } = await api.admin.updateOrderStatus(rid, status)
+    setBusy(null)
+    if (ok && data.status) { showToast(data.message); load() }
+    else showToast(data.message || 'เกิดข้อผิดพลาด')
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-2xl font-black uppercase tracking-tight">คำสั่งซื้อ</h2>
+        <div className="flex flex-wrap gap-2">
+          {['all', ...STATUS_FLOW].map(s => (
+            <button key={s} onClick={() => setFilter(s)}
+              className={`px-4 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${filter === s ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:border-black'}`}>
+              {s === 'all' ? 'ทั้งหมด' : ORDER_STATUS[s].label}
+            </button>
+          ))}
+          <button onClick={load} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><RefreshCw size={14} /></button>
+        </div>
+      </div>
+
+      {toast && <div className="px-4 py-3 bg-black text-white text-sm font-semibold rounded-xl">{toast}</div>}
+
+      <div className="space-y-3">
+        {loading ? <div className="py-16"><Spinner /></div> : orders.length === 0 ? (
+          <div className="text-center py-20 text-gray-400 font-medium bg-white border-2 border-gray-100 rounded-2xl">ไม่มีคำสั่งซื้อ</div>
+        ) : orders.map(o => {
+          const st = ORDER_STATUS[o.status] || ORDER_STATUS.pending
+          const StIcon = st.icon
+          const idx = STATUS_FLOW.indexOf(o.status)
+          const next = idx >= 0 && idx < STATUS_FLOW.length - 1 ? STATUS_FLOW[idx + 1] : null
+          return (
+            <div key={o.receipt_id} className="bg-white border-2 border-gray-100 rounded-2xl p-5">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <div>
+                  <p className="text-xs font-mono text-gray-400">#{String(o.receipt_id).slice(0, 8).toUpperCase()}</p>
+                  <p className="text-sm font-bold">{o.username} <span className="text-gray-400 font-normal">· {o.dt_purchased}</span></p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-black text-black">{o.total.toLocaleString(undefined, { minimumFractionDigits: 2 })} ฿</span>
+                  <span className={`text-xs font-bold px-2.5 py-1 rounded-full flex items-center gap-1 ${st.cls}`}><StIcon size={12} /> {st.label}</span>
+                </div>
+              </div>
+
+              <div className="text-sm text-gray-600 mb-4">
+                {o.items.map((it, i) => <span key={i}>{it.name} <span className="text-gray-400">x{it.quantity}</span>{i < o.items.length - 1 ? ', ' : ''}</span>)}
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {next && (
+                  <button onClick={() => setStatus(o.receipt_id, next)} disabled={busy === o.receipt_id}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-black text-white text-xs font-bold rounded-full hover:bg-gray-800 disabled:opacity-40 transition-colors">
+                    <Truck size={13} /> เลื่อนเป็น "{ORDER_STATUS[next].label}"
+                  </button>
+                )}
+                <select value={o.status} onChange={e => setStatus(o.receipt_id, e.target.value)} disabled={busy === o.receipt_id}
+                  className="px-3 py-2 border-2 border-gray-200 rounded-full text-xs font-semibold bg-white focus:border-black outline-none cursor-pointer">
+                  {Object.keys(ORDER_STATUS).map(k => <option key={k} value={k}>{ORDER_STATUS[k].label}</option>)}
+                </select>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 // ─── MAIN ADMIN PAGE ─────────────────────────────────────────────────────────
 
 const TABS = [
   { id: 'dashboard', label: 'ภาพรวม', icon: LayoutDashboard },
+  { id: 'orders', label: 'คำสั่งซื้อ', icon: ShoppingBag },
   { id: 'slips', label: 'รายการเติมเงิน', icon: FileImage },
   { id: 'truemoney', label: 'ซองอั่งเป่า', icon: Gift },
   { id: 'products', label: 'สินค้า', icon: Package },
@@ -1257,6 +1459,7 @@ export default function Admin() {
             transition={{ duration: 0.2 }}
           >
             {tab === 'dashboard' && <Dashboard />}
+            {tab === 'orders' && <OrderManagement />}
             {tab === 'slips' && <SlipManagement />}
             {tab === 'truemoney' && <TruemoneyManagement />}
             {tab === 'products' && <ProductManagement />}

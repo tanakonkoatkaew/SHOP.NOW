@@ -23,6 +23,9 @@ function Stars({ rating }) {
 
 export default function ProductCard({ product, index = 0 }) {
   const rating = pseudoRating(product.id || product.name)
+  const onSale = product.on_sale && product.original_price > product.price
+  const off = onSale ? Math.round((1 - product.price / product.original_price) * 100) : 0
+  const outOfStock = product.stock != null && product.stock <= 0
 
   return (
     <motion.div
@@ -42,10 +45,15 @@ export default function ProductCard({ product, index = 0 }) {
             className="w-full h-full object-contain p-6 group-hover:scale-105 transition-transform duration-500"
             onError={e => { e.target.src = 'https://placehold.co/400x400/F2F0F1/999?text=No+Image' }}
           />
-          {product.badge && (
-            <span className="absolute top-3 left-3 bg-black text-white text-xs font-bold px-2.5 py-1 rounded-full">
-              {product.badge}
+          {onSale && (
+            <span className="absolute top-3 left-3 bg-red-500 text-white text-xs font-black px-2.5 py-1 rounded-full shadow-sm">
+              -{off}%
             </span>
+          )}
+          {outOfStock && (
+            <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
+              <span className="bg-black text-white text-xs font-bold px-3 py-1.5 rounded-full">สินค้าหมด</span>
+            </div>
           )}
         </div>
 
@@ -55,7 +63,10 @@ export default function ProductCard({ product, index = 0 }) {
             {product.name}
           </h3>
           <Stars rating={rating} />
-          <p className="text-base font-bold text-black">{product.price} ฿</p>
+          <div className="flex items-baseline gap-2">
+            <p className={`text-base font-bold ${onSale ? 'text-red-500' : 'text-black'}`}>{product.price} ฿</p>
+            {onSale && <p className="text-xs text-gray-400 line-through">{product.original_price} ฿</p>}
+          </div>
         </div>
       </Link>
     </motion.div>
