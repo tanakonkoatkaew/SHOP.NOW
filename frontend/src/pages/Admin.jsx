@@ -16,10 +16,10 @@ import Spinner from '../components/Spinner'
 const CATES = ['game', 'software', 'topup', 'other']
 
 const STATUS_BADGE = {
-  pending:        { label: 'รอสลิป',      cls: 'bg-gray-100 text-gray-600' },
-  pending_review: { label: 'รอตรวจสอบ',   cls: 'bg-yellow-100 text-yellow-700' },
-  approved:       { label: 'อนุมัติแล้ว', cls: 'bg-green-100 text-green-700' },
-  rejected:       { label: 'ปฏิเสธ',      cls: 'bg-red-100 text-red-600' },
+  pending: { label: 'รอสลิป', cls: 'bg-gray-100 text-gray-600' },
+  pending_review: { label: 'รอตรวจสอบ', cls: 'bg-yellow-100 text-yellow-700' },
+  approved: { label: 'อนุมัติแล้ว', cls: 'bg-green-100 text-green-700' },
+  rejected: { label: 'ปฏิเสธ', cls: 'bg-red-100 text-red-600' },
 }
 
 function Badge({ status }) {
@@ -82,11 +82,172 @@ function Dashboard() {
         </button>
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-        <StatCard label="ผู้ใช้ทั้งหมด"  value={stats.users}         icon={Users} />
-        <StatCard label="สินค้า"          value={stats.products}      icon={Package} />
-        <StatCard label="สลิปรอตรวจ"     value={stats.pending_slips} icon={FileImage} sub="รอการอนุมัติ" />
-        <StatCard label="คำสั่งซื้อ"      value={stats.orders}        icon={LayoutDashboard} />
-        <StatCard label="รายได้รวม"       value={`${(stats.total_revenue||0).toLocaleString()} ฿`} icon={CheckCircle} />
+        <StatCard label="ผู้ใช้ทั้งหมด" value={stats.users} icon={Users} />
+        <StatCard label="สินค้า" value={stats.products} icon={Package} />
+        <StatCard label="สลิปรอตรวจ" value={stats.pending_slips} icon={FileImage} sub="รอการอนุมัติ" />
+        <StatCard label="คำสั่งซื้อ" value={stats.orders} icon={LayoutDashboard} />
+        <StatCard label="รายได้รวม" value={`${(stats.total_revenue || 0).toLocaleString()} ฿`} icon={CheckCircle} />
+      </div>
+
+      {/* Best sellers */}
+      <div className="bg-white border-2 border-gray-100 rounded-2xl p-6">
+        <h3 className="text-lg font-black flex items-center gap-2 mb-4"><Package size={18} /> สินค้าขายดี</h3>
+        {(!stats.top_products || stats.top_products.length === 0) ? (
+          <p className="text-sm text-gray-400 py-4 text-center">ยังไม่มีข้อมูลการขาย</p>
+        ) : (
+          <div className="space-y-2">
+            {stats.top_products.map((p, i) => {
+              const max = stats.top_products[0].qty || 1
+              return (
+                <div key={i} className="flex items-center gap-3">
+                  <span className="w-6 text-sm font-black text-gray-400">#{i + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-semibold truncate">{p.name}</span>
+                      <span className="text-xs text-gray-500 shrink-0 ml-2">{p.qty} ชิ้น · {p.orders} ออเดอร์</span>
+                    </div>
+                    <div className="h-2 bg-[#F2F0F1] rounded-full overflow-hidden">
+                      <div className="h-full bg-black rounded-full" style={{ width: `${Math.max(6, (p.qty / max) * 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── TAB: COUPON MANAGEMENT ──────────────────────────────────────────────────
+
+function CouponManagement() {
+  const [coupons, setCoupons] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState({ code: '', discount: '', msg: '', max_uses: '' })
+  const [toast, setToast] = useState('')
+
+  const load = useCallback(() => {
+    setLoading(true)
+    api.admin.coupons().then(({ data }) => {
+      setCoupons(data.results || [])
+      setLoading(false)
+    })
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
+
+  const create = async (e) => {
+    e.preventDefault()
+    const { ok, data } = await api.admin.createCoupon({
+      code: form.code, discount: parseFloat(form.discount), msg: form.msg,
+      max_uses: form.max_uses === '' ? 0 : parseInt(form.max_uses, 10),
+    })
+    if (ok && data.status) { showToast('สร้างคูปองสำเร็จ'); setForm({ code: '', discount: '', msg: '', max_uses: '' }); load() }
+    else showToast(data.message || 'เกิดข้อผิดพลาด')
+  }
+
+  const toggle = async (c) => {
+    const { ok, data } = await api.admin.updateCoupon(c.id, { active: !c.active })
+    if (ok && data.status) { showToast(c.active ? 'ปิดคูปองแล้ว' : 'เปิดคูปองแล้ว'); load() }
+    else showToast(data.message || 'เกิดข้อผิดพลาด')
+  }
+
+  const remove = async (id) => {
+    if (!confirm('ยืนยันลบคูปองนี้?')) return
+    const { ok, data } = await api.admin.deleteCoupon(id)
+    if (ok && data.status) { showToast('ลบคูปองแล้ว'); load() }
+    else showToast(data.message || 'เกิดข้อผิดพลาด')
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-black uppercase tracking-tight">คูปองส่วนลด</h2>
+        <button onClick={load} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><RefreshCw size={14} /></button>
+      </div>
+
+      {toast && <div className="px-4 py-3 bg-black text-white text-sm font-semibold rounded-xl">{toast}</div>}
+
+      {/* Create form */}
+      <form onSubmit={create} className="bg-white border-2 border-gray-100 rounded-2xl p-5 flex flex-wrap items-end gap-3">
+        <div className="flex-1 min-w-[130px]">
+          <label className="block text-xs font-bold text-gray-500 mb-1">โค้ด</label>
+          <input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))}
+            placeholder="SAVE20" required
+            className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm uppercase focus:border-black outline-none" />
+        </div>
+        <div className="w-24">
+          <label className="block text-xs font-bold text-gray-500 mb-1">ส่วนลด (%)</label>
+          <input type="number" min="1" max="100" value={form.discount} onChange={e => setForm(f => ({ ...f, discount: e.target.value }))}
+            placeholder="20" required
+            className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-black outline-none" />
+        </div>
+        <div className="w-28">
+          <label className="block text-xs font-bold text-gray-500 mb-1">จำกัดครั้ง</label>
+          <input type="number" min="0" value={form.max_uses} onChange={e => setForm(f => ({ ...f, max_uses: e.target.value }))}
+            placeholder="0 = ไม่จำกัด"
+            className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-black outline-none" />
+        </div>
+        <div className="flex-1 min-w-[130px]">
+          <label className="block text-xs font-bold text-gray-500 mb-1">คำอธิบาย (ไม่บังคับ)</label>
+          <input value={form.msg} onChange={e => setForm(f => ({ ...f, msg: e.target.value }))}
+            placeholder="ส่วนลดพิเศษ"
+            className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-black outline-none" />
+        </div>
+        <button type="submit" className="flex items-center gap-1.5 px-5 py-2 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-800 transition-colors">
+          <Plus size={15} /> สร้าง
+        </button>
+      </form>
+
+      <div className="bg-white border-2 border-gray-100 rounded-2xl overflow-hidden">
+        {loading ? <div className="py-16"><Spinner /></div> : coupons.length === 0 ? (
+          <div className="text-center py-20 text-gray-400 font-medium">ยังไม่มีคูปอง</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-[#F2F0F1]">
+                <tr>
+                  {['โค้ด', 'ส่วนลด', 'คำอธิบาย', 'ใช้ไป', 'สถานะ', 'จัดการ'].map(h => (
+                    <th key={h} className="px-4 py-3 text-xs font-black uppercase tracking-wide text-gray-600">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {coupons.map(c => (
+                  <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-sm font-mono font-bold">{c.code}</td>
+                    <td className="px-4 py-3 text-sm font-bold">{c.discount}%</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{c.msg}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {c.used_count}{c.max_uses > 0 ? ` / ${c.max_uses}` : ' / ∞'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${c.usable ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
+                        {c.usable ? 'พร้อมใช้' : c.active ? 'สิทธิ์หมด' : 'ปิดอยู่'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button onClick={() => toggle(c)}
+                          className={`px-3 py-1.5 border-2 text-xs font-bold rounded-full transition-colors ${c.active ? 'border-gray-300 text-gray-600 hover:border-black' : 'border-green-300 text-green-600 hover:border-green-500'}`}>
+                          {c.active ? 'ปิด' : 'เปิด'}
+                        </button>
+                        <button onClick={() => remove(c.id)}
+                          className="flex items-center gap-1 px-3 py-1.5 border-2 border-red-200 text-red-500 text-xs font-bold rounded-full hover:border-red-400 transition-colors">
+                          <Trash2 size={12} /> ลบ
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   )
@@ -102,7 +263,7 @@ function SlipRow({ slip, onApprove, onReject }) {
         <td className="px-4 py-3 text-xs font-mono text-gray-500">{slip.ref}</td>
         <td className="px-4 py-3 text-sm font-semibold">{slip.username}</td>
         <td className="px-4 py-3 text-sm font-bold">{slip.amount?.toLocaleString()} ฿</td>
-        <td className="px-4 py-3 text-xs text-gray-400">{slip.created_at?.slice(0,16).replace('T',' ')}</td>
+        <td className="px-4 py-3 text-xs text-gray-400">{slip.created_at?.slice(0, 16).replace('T', ' ')}</td>
         <td className="px-4 py-3"><Badge status={slip.status} /></td>
         <td className="px-4 py-3">
           {slip.slip_image_url ? (
@@ -132,10 +293,10 @@ function SlipRow({ slip, onApprove, onReject }) {
 }
 
 function SlipManagement() {
-  const [slips, setSlips]   = useState([])
+  const [slips, setSlips] = useState([])
   const [filter, setFilter] = useState('pending_review')
   const [loading, setLoading] = useState(true)
-  const [toast, setToast]   = useState('')
+  const [toast, setToast] = useState('')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -167,11 +328,10 @@ function SlipManagement() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-black uppercase tracking-tight">รายการเติมเงิน</h2>
         <div className="flex gap-2">
-          {['pending_review','approved','rejected','all'].map(s => (
+          {['pending_review', 'approved', 'rejected', 'all'].map(s => (
             <button key={s} onClick={() => setFilter(s)}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${
-                filter === s ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:border-black'
-              }`}>
+              className={`px-4 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${filter === s ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:border-black'
+                }`}>
               {s === 'pending_review' ? 'รอตรวจ' : s === 'approved' ? 'อนุมัติ' : s === 'rejected' ? 'ปฏิเสธ' : 'ทั้งหมด'}
             </button>
           ))}
@@ -191,7 +351,7 @@ function SlipManagement() {
             <table className="w-full text-left">
               <thead className="bg-[#F2F0F1]">
                 <tr>
-                  {['Ref','Username','จำนวน','วันที่','สถานะ','สลิป','จัดการ'].map(h => (
+                  {['Ref', 'Username', 'จำนวน', 'วันที่', 'สถานะ', 'สลิป', 'จัดการ'].map(h => (
                     <th key={h} className="px-4 py-3 text-xs font-black uppercase tracking-wide text-gray-600">{h}</th>
                   ))}
                 </tr>
@@ -212,10 +372,10 @@ function SlipManagement() {
 const EMPTY_PRODUCT = { name: '', price: '', image: '', cate: 'game', stock: 0, warranty: false, description: '' }
 
 function ProductForm({ initial = EMPTY_PRODUCT, onSave, onCancel, saving }) {
-  const [form, setForm]       = useState(initial)
+  const [form, setForm] = useState(initial)
   const [imgFile, setImgFile] = useState(null)
   const [preview, setPreview] = useState(initial.image || '')
-  const [imgTab, setImgTab]   = useState('url') // 'url' | 'upload'
+  const [imgTab, setImgTab] = useState('url') // 'url' | 'upload'
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }))
 
   const handleFile = (e) => {
@@ -268,7 +428,7 @@ function ProductForm({ initial = EMPTY_PRODUCT, onSave, onCancel, saving }) {
 
           {/* Tab toggle */}
           <div className="flex gap-1 p-1 bg-gray-100 rounded-xl w-fit">
-            {[['url','URL ลิงก์'],['upload','อัพโหลดไฟล์']].map(([v, l]) => (
+            {[['url', 'URL ลิงก์'], ['upload', 'อัพโหลดไฟล์']].map(([v, l]) => (
               <button key={v} type="button"
                 onClick={() => { setImgTab(v); if (v === 'url') clearFile() }}
                 className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${imgTab === v ? 'bg-white shadow text-black' : 'text-gray-500 hover:text-black'}`}>
@@ -339,10 +499,10 @@ function ProductForm({ initial = EMPTY_PRODUCT, onSave, onCancel, saving }) {
 
 function ProductManagement() {
   const [products, setProducts] = useState([])
-  const [loading, setLoading]  = useState(true)
-  const [modal, setModal]      = useState(null) // null | 'create' | product
-  const [saving, setSaving]    = useState(false)
-  const [toast, setToast]      = useState('')
+  const [loading, setLoading] = useState(true)
+  const [modal, setModal] = useState(null) // null | 'create' | product
+  const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState('')
 
   const load = useCallback(() => {
     setLoading(true)
@@ -403,7 +563,7 @@ function ProductManagement() {
             <table className="w-full text-left">
               <thead className="bg-[#F2F0F1]">
                 <tr>
-                  {['รูป','ชื่อสินค้า','ราคา','Stock','หมวด','จัดการ'].map(h => (
+                  {['รูป', 'ชื่อสินค้า', 'ราคา', 'Stock', 'หมวด', 'จัดการ'].map(h => (
                     <th key={h} className="px-4 py-3 text-xs font-black uppercase tracking-wide text-gray-600">{h}</th>
                   ))}
                 </tr>
@@ -413,7 +573,7 @@ function ProductManagement() {
                   <tr key={p.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
                     <td className="px-4 py-3">
                       <img src={p.image} alt="" className="w-10 h-10 object-contain rounded-lg bg-[#F2F0F1] p-1"
-                        onError={e => { e.target.style.display='none' }} />
+                        onError={e => { e.target.style.display = 'none' }} />
                     </td>
                     <td className="px-4 py-3 text-sm font-semibold max-w-[200px] truncate">{p.name}</td>
                     <td className="px-4 py-3 text-sm font-bold">{p.price?.toLocaleString()} ฿</td>
@@ -467,14 +627,14 @@ function ProductManagement() {
 
 function UserManagement() {
   const { user: me, refreshUser } = useAuth()
-  const [users, setUsers]     = useState([])
+  const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState(null)
   const [editForm, setEditForm] = useState({})
-  const [saving, setSaving]   = useState(false)
-  const [toast, setToast]     = useState('')
+  const [saving, setSaving] = useState(false)
+  const [toast, setToast] = useState('')
   const [viewingOrders, setViewingOrders] = useState(null)
-  const [userOrders, setUserOrders]       = useState([])
+  const [userOrders, setUserOrders] = useState([])
   const [ordersLoading, setOrdersLoading] = useState(false)
 
   const openOrders = async (u) => {
@@ -514,11 +674,11 @@ function UserManagement() {
     setSaving(true)
     const { ok, data } = await api.admin.updateUser(editing.id, editForm)
     setSaving(false)
-    if (ok) { 
+    if (ok) {
       showToast('อัพเดทสำเร็จ')
       if (editing.id === me?.id) await refreshUser()
       setEditing(null)
-      load() 
+      load()
     }
     else showToast(data.message || 'เกิดข้อผิดพลาด')
   }
@@ -546,7 +706,7 @@ function UserManagement() {
             <table className="w-full text-left">
               <thead className="bg-[#F2F0F1]">
                 <tr>
-                  {['Username','Email','Credit','Reward','Admin','จัดการ'].map(h => (
+                  {['Username', 'Email', 'Credit', 'Reward', 'Admin', 'จัดการ'].map(h => (
                     <th key={h} className="px-4 py-3 text-xs font-black uppercase tracking-wide text-gray-600">{h}</th>
                   ))}
                 </tr>
@@ -681,9 +841,9 @@ function UserManagement() {
 
 function TruemoneyManagement() {
   const [vouchers, setVouchers] = useState([])
-  const [filter, setFilter]     = useState('pending_review')
-  const [loading, setLoading]   = useState(true)
-  const [toast, setToast]       = useState('')
+  const [filter, setFilter] = useState('pending_review')
+  const [loading, setLoading] = useState(true)
+  const [toast, setToast] = useState('')
   const [approving, setApproving] = useState(null) // { id, username, amount }
 
   const load = useCallback(() => {
@@ -717,11 +877,10 @@ function TruemoneyManagement() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-black uppercase tracking-tight">ซองอั่งเป่า TrueMoney</h2>
         <div className="flex gap-2">
-          {['pending_review','approved','rejected','all'].map(s => (
+          {['pending_review', 'approved', 'rejected', 'all'].map(s => (
             <button key={s} onClick={() => setFilter(s)}
-              className={`px-4 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${
-                filter === s ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:border-black'
-              }`}>
+              className={`px-4 py-1.5 rounded-full text-xs font-bold border-2 transition-all ${filter === s ? 'bg-black text-white border-black' : 'border-gray-200 text-gray-600 hover:border-black'
+                }`}>
               {s === 'pending_review' ? 'รอตรวจ' : s === 'approved' ? 'อนุมัติ' : s === 'rejected' ? 'ปฏิเสธ' : 'ทั้งหมด'}
             </button>
           ))}
@@ -739,7 +898,7 @@ function TruemoneyManagement() {
             <table className="w-full text-left">
               <thead className="bg-[#F2F0F1]">
                 <tr>
-                  {['Username','Voucher Hash','จำนวน','สถานะ','วันที่','จัดการ'].map(h => (
+                  {['Username', 'Voucher Hash', 'จำนวน', 'สถานะ', 'วันที่', 'จัดการ'].map(h => (
                     <th key={h} className="px-4 py-3 text-xs font-black uppercase tracking-wide text-gray-600">{h}</th>
                   ))}
                 </tr>
@@ -755,7 +914,7 @@ function TruemoneyManagement() {
                       {v.amount != null ? `${v.amount.toFixed(2)} ฿` : <span className="text-gray-400 text-xs">ยังไม่ทราบ</span>}
                     </td>
                     <td className="px-4 py-3"><Badge status={v.status} /></td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{v.created_at?.slice(0,16).replace('T',' ')}</td>
+                    <td className="px-4 py-3 text-xs text-gray-400">{v.created_at?.slice(0, 16).replace('T', ' ')}</td>
                     <td className="px-4 py-3">
                       {v.status === 'pending_review' && (
                         <div className="flex gap-2">
@@ -813,8 +972,8 @@ function TruemoneyManagement() {
 
 function ChatBubble({ msg }) {
   const isAdmin = msg.sender === 'admin'
-  const isBot   = msg.sender === 'bot'
-  const wrap  = isAdmin ? 'justify-end' : 'justify-start'
+  const isBot = msg.sender === 'bot'
+  const wrap = isAdmin ? 'justify-end' : 'justify-start'
   const color = isAdmin
     ? 'bg-black text-white rounded-2xl rounded-br-md'
     : isBot
@@ -829,7 +988,7 @@ function ChatBubble({ msg }) {
         </div>
         <div className={`${color} px-3.5 py-2.5 text-sm whitespace-pre-wrap break-words`}>{msg.text}</div>
         <span className="text-[10px] text-gray-400 mt-0.5 px-1 self-end">
-          {msg.created_at?.slice(11,16)}
+          {msg.created_at?.slice(11, 16)}
         </span>
       </div>
     </div>
@@ -837,15 +996,15 @@ function ChatBubble({ msg }) {
 }
 
 function ChatManagement() {
-  const [sessions, setSessions]   = useState([])
-  const [loading, setLoading]     = useState(true)
-  const [active, setActive]       = useState(null) // {id, username, user_id}
-  const [messages, setMessages]   = useState([])
-  const [text, setText]           = useState('')
-  const [sending, setSending]     = useState(false)
-  const [toast, setToast]         = useState('')
+  const [sessions, setSessions] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [active, setActive] = useState(null) // {id, username, user_id}
+  const [messages, setMessages] = useState([])
+  const [text, setText] = useState('')
+  const [sending, setSending] = useState(false)
+  const [toast, setToast] = useState('')
   const scrollRef = useRef(null)
-  const pollRef   = useRef(null)
+  const pollRef = useRef(null)
 
   const loadSessions = useCallback(async () => {
     setLoading(true)
@@ -932,9 +1091,8 @@ function ChatManagement() {
               <div className="text-center py-12 text-gray-400 text-sm">ยังไม่มีบทสนทนา</div>
             ) : sessions.map(s => (
               <button key={s.id} onClick={() => setActive({ id: s.id, username: s.username, user_id: s.user_id })}
-                className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors group ${
-                  active?.id === s.id ? 'bg-[#F2F0F1]' : ''
-                }`}>
+                className={`w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors group ${active?.id === s.id ? 'bg-[#F2F0F1]' : ''
+                  }`}>
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 bg-black rounded-full flex items-center justify-center shrink-0 relative">
                     <span className="text-white text-xs font-bold">{s.username?.[0]?.toUpperCase()}</span>
@@ -947,7 +1105,7 @@ function ChatManagement() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-bold truncate">{s.username}</p>
-                      <span className="text-[10px] text-gray-400 shrink-0">{s.updated_at?.slice(11,16)}</span>
+                      <span className="text-[10px] text-gray-400 shrink-0">{s.updated_at?.slice(11, 16)}</span>
                     </div>
                     <p className="text-xs text-gray-500 truncate">
                       {s.last_sender === 'admin' ? 'คุณ: ' : s.last_sender === 'bot' ? 'Bot: ' : ''}
@@ -1026,12 +1184,13 @@ function ChatManagement() {
 // ─── MAIN ADMIN PAGE ─────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'dashboard', label: 'ภาพรวม',    icon: LayoutDashboard },
-  { id: 'slips',     label: 'รายการเติมเงิน',  icon: FileImage },
+  { id: 'dashboard', label: 'ภาพรวม', icon: LayoutDashboard },
+  { id: 'slips', label: 'รายการเติมเงิน', icon: FileImage },
   { id: 'truemoney', label: 'ซองอั่งเป่า', icon: Gift },
-  { id: 'products',  label: 'สินค้า',     icon: Package },
-  { id: 'users',     label: 'ผู้ใช้',     icon: Users },
-  { id: 'chat',      label: 'แชท',       icon: MessageCircle },
+  { id: 'products', label: 'สินค้า', icon: Package },
+  { id: 'coupons', label: 'คูปอง', icon: Gift },
+  { id: 'users', label: 'ผู้ใช้', icon: Users },
+  { id: 'chat', label: 'แชท', icon: MessageCircle },
 ]
 
 export default function Admin() {
@@ -1059,9 +1218,8 @@ export default function Admin() {
             const Icon = t.icon
             return (
               <button key={t.id} onClick={() => setTab(t.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left ${
-                  tab === t.id ? 'bg-white text-black' : 'text-gray-400 hover:text-white hover:bg-white/10'
-                }`}>
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all text-left ${tab === t.id ? 'bg-white text-black' : 'text-gray-400 hover:text-white hover:bg-white/10'
+                  }`}>
                 <Icon size={16} /> {t.label}
               </button>
             )
@@ -1080,9 +1238,8 @@ export default function Admin() {
           const Icon = t.icon
           return (
             <button key={t.id} onClick={() => setTab(t.id)}
-              className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs font-semibold transition-colors ${
-                tab === t.id ? 'text-white' : 'text-gray-600'
-              }`}>
+              className={`flex-1 flex flex-col items-center gap-1 py-3 text-xs font-semibold transition-colors ${tab === t.id ? 'text-white' : 'text-gray-600'
+                }`}>
               <Icon size={18} /> {t.label}
             </button>
           )
@@ -1100,11 +1257,12 @@ export default function Admin() {
             transition={{ duration: 0.2 }}
           >
             {tab === 'dashboard' && <Dashboard />}
-            {tab === 'slips'     && <SlipManagement />}
+            {tab === 'slips' && <SlipManagement />}
             {tab === 'truemoney' && <TruemoneyManagement />}
-            {tab === 'products'  && <ProductManagement />}
-            {tab === 'users'     && <UserManagement />}
-            {tab === 'chat'      && <ChatManagement />}
+            {tab === 'products' && <ProductManagement />}
+            {tab === 'coupons' && <CouponManagement />}
+            {tab === 'users' && <UserManagement />}
+            {tab === 'chat' && <ChatManagement />}
           </motion.div>
         </AnimatePresence>
       </main>

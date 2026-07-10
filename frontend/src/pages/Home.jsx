@@ -5,7 +5,16 @@ import { ArrowRight, Zap, ShieldCheck, Headphones, Tag } from 'lucide-react'
 import { api } from '../services/api'
 import ProductCard from '../components/ProductCard'
 
-const stats = [
+// Round down to a "nice" marketing threshold and append "+" (e.g. 22 -> "20+")
+function niceCount(n) {
+  if (n == null) return '—'
+  if (n < 10) return String(n)
+  if (n < 100) return `${Math.floor(n / 10) * 10}+`
+  if (n < 1000) return `${Math.floor(n / 100) * 100}+`
+  return `${Math.floor(n / 1000)},${String(Math.floor((n % 1000) / 100) * 100).padStart(3, '0')}+`
+}
+
+const fallbackStats = [
   { num: '200+', label: 'สินค้าดิจิทัล' },
   { num: '2,000+', label: 'ลูกค้าที่พอใจ' },
   { num: '4.8★', label: 'คะแนนเฉลี่ย' },
@@ -38,10 +47,22 @@ function StarRow({ n }) {
 
 export default function Home() {
   const [products, setProducts] = useState([])
+  const [stats, setStats] = useState(fallbackStats)
+  const [meta, setMeta] = useState({ products: null, avg_rating: 4.8 })
 
   useEffect(() => {
     api.products().then(({ ok, data }) => {
       if (ok && data.results) setProducts(data.results.slice(0, 8))
+    })
+    api.publicStats().then(({ ok, data }) => {
+      if (ok && data.status) {
+        setStats([
+          { num: niceCount(data.products),  label: 'สินค้าดิจิทัล' },
+          { num: niceCount(data.customers), label: 'ลูกค้าที่พอใจ' },
+          { num: `${data.avg_rating}★`,     label: 'คะแนนเฉลี่ย' },
+        ])
+        setMeta({ products: data.products, avg_rating: data.avg_rating })
+      }
     })
   }, [])
 
@@ -124,7 +145,7 @@ export default function Home() {
               >
                 <div className="w-10 h-10 bg-[#F2F0F1] rounded-xl flex items-center justify-center text-xl">⭐</div>
                 <div>
-                  <p className="font-black text-black text-sm">4.8 / 5.0</p>
+                  <p className="font-black text-black text-sm">{meta.avg_rating} / 5.0</p>
                   <p className="text-xs text-gray-500">คะแนนลูกค้า</p>
                 </div>
               </motion.div>
@@ -135,7 +156,7 @@ export default function Home() {
                 transition={{ repeat: Infinity, duration: 4, ease: 'easeInOut', delay: 1 }}
                 className="absolute -top-4 -right-4 bg-black text-white rounded-2xl shadow-xl px-4 py-2.5"
               >
-                <p className="font-black text-sm">200+ สินค้า</p>
+                <p className="font-black text-sm">{niceCount(meta.products)} สินค้า</p>
                 <p className="text-xs text-gray-400">พร้อมจำหน่าย</p>
               </motion.div>
             </div>

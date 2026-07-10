@@ -18,3 +18,19 @@ def get_db():
     if db is None:
         raise Exception("Database not initialized! Call init_db() first.")
     return db
+
+
+def get_jwt_secret():
+    """Single source of truth for the JWT signing secret.
+
+    Fails loudly if unset instead of silently falling back to a weak default,
+    which previously risked auth (sign) and middleware (verify) using
+    different keys.
+    """
+    secret = os.getenv("FLASK_SECRET_KEY")
+    if not secret:
+        raise RuntimeError(
+            "FLASK_SECRET_KEY environment variable is not set. "
+            "Refusing to start with an insecure default."
+        )
+    return secret

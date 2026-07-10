@@ -1,7 +1,7 @@
 from app.utils.logger import send_discord_log_async
 from bson import ObjectId
 from flask import Blueprint, request, jsonify, g
-from app.extensions import get_db
+from app.extensions import get_db, get_jwt_secret
 from app.middlewares import auth_required
 import bcrypt
 import jwt
@@ -9,7 +9,44 @@ import datetime
 import os
 
 auth_bp = Blueprint('auth', __name__)
-SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "your-secret-key")
+SECRET_KEY = get_jwt_secret()
+
+# ─── Login brute-force protection (DB-backed, works across gunicorn workers) ──
+MAX_FAILED_ATTEMPTS = 5           # lock after this many consecutive failures
+LOCKOUT_MINUTES     = 15          # duration of the lock / attempt window
+
+
+def _login_locked_for(db, key):
+    """Return remaining lockout seconds for `key` (username|ip), or 0 if free."""
+    rec = db.login_attempts.find_one({"_id": key})
+    if not rec:
+        return 0
+    if rec.get("count", 0) < MAX_FAILED_ATTEMPTS:
+        return 0
+    last = rec.get("last")
+    if not last:
+        return 0
+    elapsed = (datetime.datetime.utcnow() - last).total_seconds()
+    remaining = LOCKOUT_MINUTES * 60 - elapsed
+    return int(remaining) if remaining > 0 else 0
+
+
+def _record_login_failure(db, key):
+    now = datetime.datetime.utcnow()
+    rec = db.login_attempts.find_one({"_id": key})
+    # Reset the counter if the previous window already expired
+    if rec and rec.get("last") and (now - rec["last"]).total_seconds() > LOCKOUT_MINUTES * 60:
+        db.login_attempts.update_one({"_id": key}, {"$set": {"count": 1, "last": now}})
+    else:
+        db.login_attempts.update_one(
+            {"_id": key},
+            {"$inc": {"count": 1}, "$set": {"last": now}},
+            upsert=True,
+        )
+
+
+def _clear_login_failures(db, key):
+    db.login_attempts.delete_one({"_id": key})
 
 def get_client_ip():
     forwarded = request.headers.get("X-Forwarded-For")
@@ -17,9 +54,16 @@ def get_client_ip():
         return forwarded.split(',')[0].strip()
     return request.remote_addr
 
-# ✅ REGISTER
+# ❌ REGISTER — disabled (OAuth-only policy: users must sign up via Google / Discord)
 @auth_bp.route('/register', methods=['POST'])
 def register():
+    return jsonify({
+        "status": False,
+        "message": "การสมัครผ่านช่องทางนี้ถูกปิดใช้งาน กรุณาสมัคร/เข้าสู่ระบบด้วย Google หรือ Discord"
+    }), 403
+
+
+def _register_legacy_disabled():
     data = request.json
     email = data.get('email')
     username = data.get('username')
@@ -71,18 +115,29 @@ def login():
     password = data.get('password')
 
     db = get_db()
+
+    # Brute-force protection — throttle by username + client IP
+    ip_address = get_client_ip()
+    lock_key = f"{username}|{ip_address}"
+    locked = _login_locked_for(db, lock_key)
+    if locked:
+        return jsonify({
+            "error": f"พยายามเข้าสู่ระบบผิดเกินกำหนด กรุณาลองใหม่ในอีก {locked // 60 + 1} นาที"
+        }), 429
+
     user = db.users.find_one({'username': username})
     if not user:
-        return jsonify({"error": "User not found"}), 401
+        _record_login_failure(db, lock_key)
+        return jsonify({"error": "Invalid credentials"}), 401
 
     if bcrypt.checkpw(password.encode('utf-8'), user['password'].encode('utf-8')):
+        _clear_login_failures(db, lock_key)
         token = jwt.encode({
             'user_id': str(user['_id']),
             'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
         }, SECRET_KEY, algorithm="HS256")
 
         headers_copy = dict(request.headers)
-        ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
         host_url = request.host_url
         referrer = request.referrer
 
@@ -100,6 +155,7 @@ def login():
 
         return jsonify({"token": token}), 200
 
+    _record_login_failure(db, lock_key)
     return jsonify({"error": "Invalid credentials"}), 401
 
 # ✅ GET PROFILE เต็ม
@@ -182,6 +238,42 @@ def get_user_basic():
             "is_admin": bool(user.get("is_admin", False)),
         }
     })
+
+
+# ─── IN-APP NOTIFICATIONS ────────────────────────────────────────────────────
+
+@auth_bp.route('/me/notifications', methods=['GET'])
+@auth_required
+def list_notifications():
+    db = get_db()
+    docs = db.notifications.find({"user_id": str(g.user_id)}).sort("created_at", -1).limit(50)
+    items = []
+    unread = 0
+    for d in docs:
+        if not d.get("read", False):
+            unread += 1
+        items.append({
+            "id":         d["_id"],
+            "title":      d.get("title", ""),
+            "body":       d.get("body", ""),
+            "type":       d.get("type", "info"),
+            "read":       bool(d.get("read", False)),
+            "created_at": d["created_at"].isoformat() if d.get("created_at") else "",
+        })
+    return jsonify({"status": True, "unread": unread, "results": items})
+
+
+@auth_bp.route('/me/notifications/read', methods=['POST'])
+@auth_required
+def mark_notifications_read():
+    db = get_db()
+    data = request.json or {}
+    nid = data.get("id")
+    if nid:
+        db.notifications.update_one({"_id": nid, "user_id": str(g.user_id)}, {"$set": {"read": True}})
+    else:
+        db.notifications.update_many({"user_id": str(g.user_id), "read": False}, {"$set": {"read": True}})
+    return jsonify({"status": True})
 
 
 # ─── DISCORD OAUTH2 LOGIN ────────────────────────────────────────────────────

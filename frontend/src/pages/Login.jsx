@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Eye, EyeOff, ShoppingBag, LogIn } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Eye, EyeOff, ShoppingBag, LogIn, ShieldCheck, ChevronDown } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
 
 
@@ -13,6 +13,7 @@ export default function Login() {
   const [showPw, setShowPw]   = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError]     = useState('')
+  const [showAdmin, setShowAdmin] = useState(false)
 
   useEffect(() => {
     const token = searchParams.get('token')
@@ -36,7 +37,7 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-4 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+    <div className="min-h-[calc(100vh-64px)] flex items-center justify-center px-4 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 py-10">
       <motion.div
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
@@ -53,61 +54,7 @@ export default function Login() {
         </div>
 
         <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-sm">
-          <form onSubmit={submit} className="space-y-5">
-
-            {error && (
-              <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-red-400 text-sm">
-                {error}
-              </div>
-            )}
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">Username</label>
-              <input
-                type="text"
-                value={form.username}
-                onChange={e => setForm({ ...form, username: e.target.value })}
-                placeholder="กรอก username"
-                required
-                className="w-full px-4 py-3 bg-white/6 border border-white/12 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 text-sm transition-all"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-slate-300 mb-2">รหัสผ่าน</label>
-              <div className="relative">
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={form.password}
-                  onChange={e => setForm({ ...form, password: e.target.value })}
-                  placeholder="กรอกรหัสผ่าน"
-                  required
-                  className="w-full px-4 py-3 pr-12 bg-white/6 border border-white/12 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 text-sm transition-all"
-                />
-                <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
-                  {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
-                </button>
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex items-center justify-center gap-2 py-3.5 bg-amber-500 hover:bg-amber-400 disabled:opacity-60 text-white font-bold rounded-xl transition-all shadow-lg shadow-amber-500/20 hover:shadow-amber-500/35 text-sm"
-            >
-              {loading ? 'กำลังเข้าสู่ระบบ...' : <><LogIn size={16} /> เข้าสู่ระบบ</>}
-            </button>
-          </form>
-
-          <div className="relative my-5">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-white/10"></div>
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-[#1e293b]/90 px-3 py-0.5 rounded-full text-slate-400 font-bold border border-white/5 backdrop-blur-md">หรือ</span>
-            </div>
-          </div>
-
+          {/* Primary: Social login */}
           <div className="space-y-3">
             <button
               type="button"
@@ -136,12 +83,81 @@ export default function Login() {
           </div>
 
           <p className="text-center text-sm text-slate-500 mt-6">
-
             ยังไม่มีบัญชี?{' '}
             <Link to="/register" className="text-amber-400 font-semibold hover:text-amber-300 transition-colors">
               สมัครฟรี →
             </Link>
           </p>
+
+          {/* Hidden: Master Admin login (collapsible) */}
+          <div className="mt-6 pt-5 border-t border-white/10">
+            <button
+              type="button"
+              onClick={() => setShowAdmin(v => !v)}
+              className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
+            >
+              <ShieldCheck size={14} />
+              เข้าสู่ระบบสำหรับ Master Admin
+              <ChevronDown size={14} className={`transition-transform ${showAdmin ? 'rotate-180' : ''}`} />
+            </button>
+
+            <AnimatePresence initial={false}>
+              {showAdmin && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.25 }}
+                  className="overflow-hidden"
+                >
+                  <form onSubmit={submit} className="space-y-4 pt-4" autoComplete="off">
+                    {error && (
+                      <div className="bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3 text-red-400 text-sm">
+                        {error}
+                      </div>
+                    )}
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-300 mb-2">Username</label>
+                      <input
+                        type="text"
+                        value={form.username}
+                        onChange={e => setForm({ ...form, username: e.target.value })}
+                        placeholder="กรอก username"
+                        autoComplete="off"
+                        className="w-full px-4 py-3 bg-white/6 border border-white/12 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 text-sm transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-300 mb-2">รหัสผ่าน</label>
+                      <div className="relative">
+                        <input
+                          type={showPw ? 'text' : 'password'}
+                          value={form.password}
+                          onChange={e => setForm({ ...form, password: e.target.value })}
+                          placeholder="กรอกรหัสผ่าน"
+                          autoComplete="new-password"
+                          className="w-full px-4 py-3 pr-12 bg-white/6 border border-white/12 rounded-xl text-white placeholder:text-slate-600 focus:outline-none focus:border-amber-500 focus:ring-4 focus:ring-amber-500/15 text-sm transition-all"
+                        />
+                        <button type="button" onClick={() => setShowPw(v => !v)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                          {showPw ? <EyeOff size={18} /> : <Eye size={18} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full flex items-center justify-center gap-2 py-3 bg-white/10 hover:bg-white/15 disabled:opacity-60 text-white font-bold rounded-xl transition-all text-sm border border-white/10"
+                    >
+                      {loading ? 'กำลังเข้าสู่ระบบ...' : <><LogIn size={16} /> เข้าสู่ระบบ Admin</>}
+                    </button>
+                  </form>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
       </motion.div>
     </div>

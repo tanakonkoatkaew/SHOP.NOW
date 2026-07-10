@@ -11,6 +11,7 @@ import Profile from './pages/Profile'
 import Topup from './pages/Topup'
 import { PurchaseLogs, TopupLogs } from './pages/Logs'
 import Contact from './pages/Contact'
+import Coupons from './pages/Coupons'
 import Admin from './pages/Admin'
 import ChatWidget from './components/ChatWidget'
 
@@ -32,6 +33,7 @@ export default function App() {
               <Route path="/purchase-logs"     element={<PurchaseLogs />} />
               <Route path="/topup-logs"        element={<TopupLogs />} />
               <Route path="/contact"           element={<Contact />} />
+              <Route path="/coupons"           element={<Coupons />} />
               <Route path="/admin"            element={<Admin />} />
             </Routes>
           </main>

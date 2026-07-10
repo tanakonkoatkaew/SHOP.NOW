@@ -5,6 +5,8 @@ from flask import Blueprint, request, jsonify, g
 from bson import ObjectId
 from app.extensions import get_db
 from app.middlewares import admin_required
+from app.utils.notify import push_notification
+from app.utils.coupons import coupon_usable
 
 admin_bp = Blueprint('admin', __name__)
 
@@ -26,6 +28,21 @@ def stats():
     ]))
     revenue = total_approved[0]["total"] if total_approved else 0
 
+    # Best-selling products (by number of orders / quantity)
+    best_sellers = list(db.orders.aggregate([
+        {"$group": {
+            "_id": "$product_name",
+            "qty": {"$sum": {"$ifNull": ["$quantity", 1]}},
+            "orders": {"$sum": 1},
+        }},
+        {"$sort": {"qty": -1}},
+        {"$limit": 5},
+    ]))
+    top_products = [
+        {"name": b["_id"] or "—", "qty": b.get("qty", 0), "orders": b.get("orders", 0)}
+        for b in best_sellers
+    ]
+
     return jsonify({
         "status": True,
         "users":         db.users.count_documents({}),
@@ -33,6 +50,7 @@ def stats():
         "pending_slips": pending_slips,
         "total_revenue": round(revenue, 2),
         "orders":        db.orders.count_documents({}),
+        "top_products":  top_products,
     })
 
 
@@ -79,6 +97,12 @@ def approve_slip(ref):
         "credited": True,
         "approved_at": datetime.now(timezone.utc),
     }})
+    push_notification(
+        db, payment["user_id"],
+        title="เติมเงินสำเร็จ ✅",
+        body=f"ยอด {payment['amount']:.2f} ฿ ถูกเพิ่มเข้าบัญชีของคุณเรียบร้อยแล้ว",
+        ntype="success",
+    )
     return jsonify({"status": True, "message": f"อนุมัติ {payment['amount']:.2f} ฿ ให้ {payment.get('username','')} แล้ว"})
 
 
@@ -96,6 +120,12 @@ def reject_slip(ref):
         "reject_reason": reason,
         "rejected_at": datetime.now(timezone.utc),
     }})
+    push_notification(
+        db, payment["user_id"],
+        title="สลิปเติมเงินถูกปฏิเสธ ❌",
+        body=(f"เหตุผล: {reason}" if reason else "กรุณาตรวจสอบสลิปและลองใหม่อีกครั้ง"),
+        ntype="error",
+    )
     return jsonify({"status": True, "message": "ปฏิเสธสลิปแล้ว"})
 
 
@@ -248,6 +278,12 @@ def approve_truemoney(voucher_id):
         "amount":      amount,
         "approved_at": datetime.now(timezone.utc),
     }})
+    push_notification(
+        db, voucher["user_id"],
+        title="เติมเงินสำเร็จ ✅",
+        body=f"ซองอั่งเปา {amount:.2f} ฿ ถูกเพิ่มเข้าบัญชีของคุณเรียบร้อยแล้ว",
+        ntype="success",
+    )
     return jsonify({"status": True, "message": f"เติมเงิน {amount:.2f} ฿ ให้ {voucher.get('username','')} แล้ว"})
 
 
@@ -270,7 +306,117 @@ def reject_truemoney(voucher_id):
         "reject_reason": reason,
         "rejected_at":   datetime.now(timezone.utc),
     }})
+    push_notification(
+        db, voucher["user_id"],
+        title="ซองอั่งเปาถูกปฏิเสธ ❌",
+        body=(f"เหตุผล: {reason}" if reason else "กรุณาตรวจสอบซองอั่งเปาและลองใหม่อีกครั้ง"),
+        ntype="error",
+    )
     return jsonify({"status": True, "message": "ปฏิเสธซองอั่งเป่าแล้ว"})
+
+
+# ─── COUPON MANAGEMENT ───────────────────────────────────────────────────────
+
+@admin_bp.route('/coupons', methods=['GET'])
+@admin_required
+def list_coupons():
+    db = get_db()
+    coupons = db.coupons.find().sort("_id", -1).limit(500)
+    results = []
+    for c in coupons:
+        results.append({
+            "id":         str(c["_id"]),
+            "code":       c.get("code", ""),
+            "discount":   float(c.get("discount", 0)),
+            "msg":        c.get("msg", ""),
+            "active":     bool(c.get("active", True)) and not c.get("used", False),
+            "max_uses":   int(c.get("max_uses", 0) or 0),
+            "used_count": int(c.get("used_count", 0) or 0),
+            "usable":     coupon_usable(c),
+        })
+    return jsonify({"status": True, "results": results})
+
+
+@admin_bp.route('/coupons', methods=['POST'])
+@admin_required
+def create_coupon():
+    db = get_db()
+    data = request.json or {}
+    code = (data.get("code") or "").strip().upper()
+    if not code:
+        return jsonify({"status": False, "message": "กรุณากรอกโค้ดคูปอง"}), 400
+
+    try:
+        discount = float(data.get("discount", 0))
+    except (TypeError, ValueError):
+        return jsonify({"status": False, "message": "ส่วนลดไม่ถูกต้อง"}), 400
+    if discount <= 0 or discount > 100:
+        return jsonify({"status": False, "message": "ส่วนลดต้องอยู่ระหว่าง 1–100%"}), 400
+
+    try:
+        max_uses = int(data.get("max_uses", 0) or 0)
+    except (TypeError, ValueError):
+        max_uses = 0
+    if max_uses < 0:
+        max_uses = 0
+
+    if db.coupons.find_one({"code": code}):
+        return jsonify({"status": False, "message": "โค้ดนี้มีอยู่แล้ว"}), 400
+
+    doc = {
+        "code":       code,
+        "discount":   discount,
+        "msg":        data.get("msg", f"ส่วนลด {discount:.0f}%"),
+        "active":     bool(data.get("active", True)),
+        "max_uses":   max_uses,
+        "used_count": 0,
+    }
+    result = db.coupons.insert_one(doc)
+    return jsonify({"status": True, "id": str(result.inserted_id), "message": "สร้างคูปองสำเร็จ"})
+
+
+@admin_bp.route('/coupons/<coupon_id>', methods=['PUT'])
+@admin_required
+def update_coupon(coupon_id):
+    db = get_db()
+    try:
+        oid = ObjectId(coupon_id)
+    except Exception:
+        return jsonify({"status": False, "message": "ID ไม่ถูกต้อง"}), 400
+
+    data = request.json or {}
+    updates = {}
+    if "active" in data:
+        updates["active"] = bool(data["active"])
+        updates["used"] = False   # clear any legacy one-shot lock when re-enabling
+    if "msg" in data:
+        updates["msg"] = data["msg"]
+    if "max_uses" in data:
+        try:
+            updates["max_uses"] = max(0, int(data["max_uses"]))
+        except (TypeError, ValueError):
+            pass
+    if not updates:
+        return jsonify({"status": False, "message": "ไม่มีข้อมูลให้แก้ไข"}), 400
+
+    result = db.coupons.update_one({"_id": oid}, {"$set": updates})
+    if result.matched_count == 0:
+        return jsonify({"status": False, "message": "ไม่พบคูปอง"}), 404
+    return jsonify({"status": True, "message": "อัปเดตคูปองแล้ว"})
+
+
+@admin_bp.route('/coupons/<coupon_id>', methods=['DELETE'])
+@admin_required
+def delete_coupon(coupon_id):
+    db = get_db()
+    try:
+        oid = ObjectId(coupon_id)
+    except Exception:
+        return jsonify({"status": False, "message": "ID ไม่ถูกต้อง"}), 400
+    result = db.coupons.delete_one({"_id": oid})
+    if result.deleted_count == 0:
+        return jsonify({"status": False, "message": "ไม่พบคูปอง"}), 404
+    return jsonify({"status": True, "message": "ลบคูปองแล้ว"})
 
 
 # ─── USER MANAGEMENT ─────────────────────────────────────────────────────────

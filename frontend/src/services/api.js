@@ -34,8 +34,14 @@ export const api = {
   profile:       ()     => request('GET',  '/auth/me/profile'),
   updateProfile: (body) => request('PUT',  '/auth/me/profile', body),
 
+  // Notifications
+  notifications:     ()   => request('GET',  '/auth/me/notifications'),
+  readNotification:  (id) => request('POST', '/auth/me/notifications/read', id ? { id } : {}),
+
   // Products
   products:      ()         => request('GET', '/products/product'),
+  publicStats:   ()         => request('GET', '/products/stats'),
+  publicCoupons: ()         => request('GET', '/products/coupons'),
   productDetail: (cate, id) => request('GET', `/products/product/${cate}/${id}`),
 
   // Orders
@@ -77,6 +83,10 @@ export const api = {
     createProduct: (data)    => request('POST',   '/admin/products', data),
     updateProduct: (id, data)=> request('PUT',    `/admin/products/${id}`, data),
     deleteProduct: (id)      => request('DELETE', `/admin/products/${id}`),
+    coupons:       ()        => request('GET',    '/admin/coupons'),
+    createCoupon:  (data)    => request('POST',   '/admin/coupons', data),
+    updateCoupon:  (id, data)=> request('PUT',    `/admin/coupons/${id}`, data),
+    deleteCoupon:  (id)      => request('DELETE', `/admin/coupons/${id}`),
     users:         ()        => request('GET',    '/admin/users'),
     updateUser:    (id, data)=> request('PUT',    `/admin/users/${id}`, data),
     deleteUser:    (id)      => request('DELETE', `/admin/users/${id}`),

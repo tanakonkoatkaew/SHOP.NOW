@@ -3,10 +3,12 @@ import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Menu, X, Wallet, User, LogOut, ChevronDown, Search, ShieldCheck } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
+import NotificationBell from './NotificationBell'
 
 const navLinks = [
   { to: '/products', label: 'สินค้า' },
   { to: '/topup',    label: 'เติมเงิน' },
+  { to: '/coupons',  label: 'คูปอง' },
   { to: '/contact',  label: 'ติดต่อ' },
 ]
 
@@ -61,6 +63,8 @@ export default function Navbar() {
             <Link to="/products" className="p-2 text-gray-500 hover:text-black transition-colors">
               <Search size={20} />
             </Link>
+
+            {user && <NotificationBell />}
 
             {user ? (
               <div className="relative">

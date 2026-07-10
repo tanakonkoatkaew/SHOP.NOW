@@ -1,9 +1,9 @@
 from flask import request, jsonify, g
 import jwt
-import os
 from functools import wraps
+from app.extensions import get_jwt_secret
 
-SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
+SECRET_KEY = get_jwt_secret()
 
 def auth_required(f):
     @wraps(f)

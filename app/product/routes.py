@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from bson import ObjectId
 import uuid
 from app.utils.logger import send_discord_log_async
+from app.utils.notify import push_notification
+from app.utils.coupons import coupon_usable, coupon_remaining
 
 product_bp = Blueprint('product', __name__)
 
@@ -23,6 +25,38 @@ def get_products():
             "cate": p["cate"]
         })
     return jsonify({"status": True, "results": products})
+
+
+# ✅ สถิติสาธารณะสำหรับหน้าแรก (ไม่ต้องล็อกอิน)
+def _pseudo_rating(text):
+    """Mirror of the frontend ProductCard pseudoRating (int32 hash)."""
+    h = 0
+    for c in str(text):
+        h = (h * 31 + ord(c)) & 0xFFFFFFFF
+    if h >= 0x80000000:          # emulate JS signed Int32
+        h -= 0x100000000
+    return 3.5 + (abs(h) % 16) / 10
+
+
+@product_bp.route('/stats', methods=['GET'])
+def public_stats():
+    db = get_db()
+    products = list(db.products.find({}, {"_id": 1, "name": 1}))
+    product_count = len(products)
+    customers = db.users.count_documents({})
+
+    if products:
+        avg = sum(_pseudo_rating(str(p["_id"]) or p.get("name", "")) for p in products) / len(products)
+    else:
+        avg = 4.8
+
+    return jsonify({
+        "status":     True,
+        "products":   product_count,
+        "customers":  customers,
+        "orders":     db.orders.count_documents({}),
+        "avg_rating": round(avg, 1),
+    })
 
 
 # ✅ ดึงข้อมูลสินค้าแบบละเอียด
@@ -90,9 +124,11 @@ def submit_order(product_id):
     coupon_doc = None
     if coupon_code:
         coupon_doc = db.coupons.find_one({"code": coupon_code.upper()})
-        if coupon_doc and not coupon_doc.get("used", False):
+        if coupon_doc and coupon_usable(coupon_doc):
             discount_percent = float(coupon_doc.get("discount", 0))
             total_price = total_price * (1 - discount_percent / 100)
+        else:
+            coupon_doc = None   # invalid/expired coupon → no discount, don't consume
 
     if float(user.get("credit", 0)) < total_price:
         return jsonify({"status": False, "msg": "เครดิตไม่เพียงพอ"}), 400
@@ -101,9 +137,9 @@ def submit_order(product_id):
     db.users.update_one({"_id": ObjectId(g.user_id)}, {"$inc": {"credit": -total_price}})
     db.products.update_one({"_id": product["_id"]}, {"$inc": {"stock": -quantity}})
 
-    # Mark coupon as used (prevents reuse)
+    # Count one use against the coupon (respects max_uses; unlimited if 0)
     if coupon_doc:
-        db.coupons.update_one({"_id": coupon_doc["_id"]}, {"$set": {"used": True}})
+        db.coupons.update_one({"_id": coupon_doc["_id"]}, {"$inc": {"used_count": 1}})
 
     order_doc = {
         "_id": str(uuid.uuid4()),
@@ -119,6 +155,13 @@ def submit_order(product_id):
         "refund": False
     }
     db.orders.insert_one(order_doc)
+
+    push_notification(
+        db, g.user_id,
+        title="สั่งซื้อสำเร็จ 🛒",
+        body=f"คำสั่งซื้อ {product['name']} x{quantity} ({total_price:.2f} ฿) กำลังดำเนินการจัดส่ง",
+        ntype="success",
+    )
 
     headers_copy = dict(request.headers)
     ip_address = request.headers.get("X-Forwarded-For", request.remote_addr)
@@ -252,11 +295,11 @@ def check_coupon(code):
             "msg": "Coupon ไม่ถูกต้อง"
         })
 
-    if coupon.get("used", False):
+    if not coupon_usable(coupon):
         return jsonify({
             "status": False,
             "alreadyUsed": True,
-            "msg": "คูปองนี้ถูกใช้ไปแล้ว"
+            "msg": "คูปองนี้ใช้ไม่ได้แล้ว (หมดสิทธิ์หรือถูกปิด)"
         })
 
     return jsonify({
@@ -264,6 +307,23 @@ def check_coupon(code):
         "discount": coupon.get("discount", 0.0),
         "msg": coupon.get("msg", "สามารถใช้คูปองได้")
     })
+
+
+# ✅ คูปองที่ใช้ได้ทั้งหมด (สาธารณะ — สำหรับหน้าคูปอง)
+@product_bp.route('/coupons', methods=['GET'])
+def public_coupons():
+    db = get_db()
+    results = []
+    for c in db.coupons.find().sort("discount", -1):
+        if not coupon_usable(c):
+            continue
+        results.append({
+            "code":      c.get("code", ""),
+            "discount":  float(c.get("discount", 0)),
+            "msg":       c.get("msg", ""),
+            "remaining": coupon_remaining(c),   # None = unlimited
+        })
+    return jsonify({"status": True, "results": results})
 
 @product_bp.route('/me/logs/product/<int:start>/<int:limit>', methods=['GET'])
 @auth_required
