@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, g
 from bson import ObjectId
 from app.extensions import get_db
+from app.utils.logger import send_discord_log_async
 
 payment_bp = Blueprint('payment', __name__)
 SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "your-secret-key")
@@ -171,9 +172,40 @@ def upload_slip():
 
     slip_image_url = f"/static/uploads/slips/{filename}"
 
+    # Manual-review mode (SLIP_AUTO_VERIFY != "true"): skip OCR entirely and queue
+    # the slip for an admin to approve. Safe & free — no external API needed.
+    auto_verify = os.getenv("SLIP_AUTO_VERIFY", "true").lower() == "true"
+    if not auto_verify:
+        db.pending_qr_payments.update_one({"_id": ref_code}, {"$set": {
+            "status":         "pending_review",
+            "slip_uploaded":  True,
+            "slip_image_url": slip_image_url,
+            "uploaded_at":    datetime.now(timezone.utc),
+        }})
+        try:
+            send_discord_log_async(
+                event_type="🧾 มีสลิปใหม่รอตรวจสอบ",
+                request_headers=dict(request.headers),
+                ip_address=request.headers.get("X-Forwarded-For", request.remote_addr),
+                host_url=request.host_url,
+                referrer=request.referrer,
+                data={
+                    "User": payment.get("username", "—"),
+                    "Amount": f"{payment['amount']:.2f} ฿",
+                    "Ref": ref_code,
+                },
+            )
+        except Exception as e:
+            print("[slip] admin notify failed:", e)
+        return jsonify({
+            "status":        True,
+            "auto_verified": False,
+            "message":       "ส่งสลิปสำเร็จ กำลังรอแอดมินตรวจสอบ (ปกติภายใน 5-15 นาที)",
+        })
+
     # Perform automatic slip verification using Google Cloud Vision OCR
     from app.services.payment_service import verify_slip_ocr
-    
+
     ocr_result = verify_slip_ocr(save_path, payment["amount"])
     
     if ocr_result["success"]:
