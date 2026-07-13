@@ -26,6 +26,7 @@ def get_products():
             "cate": p["cate"],
             "stock": int(p.get("stock", 0)),
             "description": p.get("description", ""),
+            "delivery_type": p.get("delivery_type", "digital"),
         })
     return jsonify({"status": True, "results": products})
 
@@ -92,7 +93,8 @@ def get_product_detail(category_id, product_id):
             "cate": product.get("cate", ""),
             "description": product.get("description", ""),
             "warranty": product.get("warranty", False),
-            "stock": product.get("stock", 0)
+            "stock": product.get("stock", 0),
+            "delivery_type": product.get("delivery_type", "digital"),
         }
     })
 
@@ -190,6 +192,7 @@ def get_my_orders():
                 "refund": o.get("refund", False),
                 "items": [],
                 "total": 0.0,
+                "shipping_address": None,
             }
             order_index.append(rid)
         line_total = o.get("line_total")
@@ -201,7 +204,10 @@ def get_my_orders():
             "price": o.get("product_price", 0),
             "quantity": o.get("quantity", 1),
             "key_code": o.get("key_code", ""),
+            "delivery_type": o.get("delivery_type", "digital"),
         })
+        if o.get("shipping_address") and not receipts[rid]["shipping_address"]:
+            receipts[rid]["shipping_address"] = o["shipping_address"]
         receipts[rid]["total"] += float(line_total)
 
     return jsonify({"status": True, "results": [receipts[r] for r in order_index]})

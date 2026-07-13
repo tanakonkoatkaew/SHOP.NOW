@@ -59,10 +59,14 @@ def compute_order(db, user, raw_items, coupon_code=None, points_to_use=0, credit
             "qty": qty,
             "unit_price": ep["price"],
             "line_total": line_total,
+            "delivery_type": product.get("delivery_type", "digital"),
         })
 
     if not line_items:
         return False, {"status": False, "msg": "ตะกร้าว่างเปล่า"}, 400
+
+    # Any physical item in the cart means the order must be shipped somewhere
+    requires_shipping = any(li["delivery_type"] == "physical" for li in line_items)
 
     flash_discount = round(subtotal_original - subtotal, 2)
 
@@ -117,6 +121,7 @@ def compute_order(db, user, raw_items, coupon_code=None, points_to_use=0, credit
         "discount_percent": discount_percent,
         "coupon_id": coupon_id,
         "points_used_pts": points_used,
+        "requires_shipping": requires_shipping,
     }, 200
 
 
@@ -190,9 +195,12 @@ def finalize_order(db, pending, payment_ref=None):
 
     # Write the real order docs (one per line, shared receipt id = pending id)
     now = datetime.now(timezone.utc)
+    shipping_address = pending.get("shipping_address")
     receipt_items = []
     for li in line_items:
-        key_code = str(uuid.uuid4()).upper()
+        delivery_type = li.get("delivery_type", "digital")
+        # Only digital goods are delivered as a key/code; physical ones get shipped
+        key_code = str(uuid.uuid4()).upper() if delivery_type == "digital" else ""
         db.orders.insert_one({
             "_id": str(uuid.uuid4()),
             "receipt_id": pid,
@@ -206,6 +214,8 @@ def finalize_order(db, pending, payment_ref=None):
             "quantity": li["qty"],
             "line_total": li["line_total"],
             "key_code": key_code,
+            "delivery_type": delivery_type,
+            "shipping_address": shipping_address if delivery_type == "physical" else None,
             "status": "pending",
             "paid": True,
             "payment_ref": payment_ref,
@@ -215,7 +225,8 @@ def finalize_order(db, pending, payment_ref=None):
         })
         receipt_items.append({
             "name": li["name"], "qty": li["qty"],
-            "unit_price": li["unit_price"], "line_total": li["line_total"], "key_code": key_code,
+            "unit_price": li["unit_price"], "line_total": li["line_total"],
+            "key_code": key_code, "delivery_type": delivery_type,
         })
 
     db.pending_orders.update_one({"_id": pid}, {"$set": {
@@ -232,7 +243,7 @@ def finalize_order(db, pending, payment_ref=None):
     )
     if user:
         try:
-            send_order_receipt(user, str(pid), receipt_items, summary)
+            send_order_receipt(user, str(pid), receipt_items, summary, shipping_address)
         except Exception as e:
             print("[order] receipt failed:", e)
 

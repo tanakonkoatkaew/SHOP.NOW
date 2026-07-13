@@ -6,7 +6,7 @@ import {
   CheckCircle, XCircle, Pencil, Trash2, Plus,
   X, AlertTriangle, RefreshCw, Upload,
   MessageCircle, Send, Bot, ShieldCheck,
-  Truck, Star, ShoppingBag, Clock, Box, Check,
+  Truck, Star, ShoppingBag, Clock, Box, Check, Zap, MapPin,
 } from 'lucide-react'
 import { api } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
@@ -322,7 +322,7 @@ function CouponManagement() {
 
 // ─── TAB: PRODUCT MANAGEMENT ─────────────────────────────────────────────────
 
-const EMPTY_PRODUCT = { name: '', price: '', image: '', cate: 'game', stock: 0, warranty: false, description: '', sale_price: '', sale_start: '', sale_end: '' }
+const EMPTY_PRODUCT = { name: '', price: '', image: '', cate: 'game', stock: 0, warranty: false, description: '', sale_price: '', sale_start: '', sale_end: '', delivery_type: 'digital' }
 
 // datetime-local wants "YYYY-MM-DDTHH:MM"; backend sends ISO with offset
 const toLocalInput = (iso) => (iso ? String(iso).slice(0, 16) : '')
@@ -333,6 +333,7 @@ function ProductForm({ initial = EMPTY_PRODUCT, onSave, onCancel, saving }) {
     sale_price: initial.sale_price || '',
     sale_start: toLocalInput(initial.sale_start),
     sale_end: toLocalInput(initial.sale_end),
+    delivery_type: initial.delivery_type || 'digital',
   })
   const [imgFile, setImgFile] = useState(null)
   const [preview, setPreview] = useState(initial.image || '')
@@ -381,6 +382,28 @@ function ProductForm({ initial = EMPTY_PRODUCT, onSave, onCancel, saving }) {
           <input type="checkbox" id="warranty" checked={form.warranty} onChange={e => set('warranty', e.target.checked)}
             className="w-4 h-4 accent-black" />
           <label htmlFor="warranty" className="text-sm font-semibold">มีการรับประกัน</label>
+        </div>
+
+        {/* Delivery type */}
+        <div className="col-span-2">
+          <label className="block text-xs font-black uppercase mb-1">รูปแบบการจัดส่ง</label>
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { v: 'digital', icon: Zap, title: 'ดิจิทัล (ส่งออนไลน์)', sub: 'ส่งคีย์/รหัสทันที ไม่ต้องใช้ที่อยู่' },
+              { v: 'physical', icon: Truck, title: 'จัดส่งพัสดุ', sub: 'ลูกค้าต้องระบุที่อยู่จัดส่ง' },
+            ].map(({ v, icon: Icon, title, sub }) => (
+              <button key={v} type="button" onClick={() => set('delivery_type', v)}
+                className={`flex items-start gap-2.5 p-3 rounded-xl border-2 text-left transition-all ${
+                  form.delivery_type === v ? 'border-black bg-[#F2F0F1]' : 'border-gray-200 hover:border-gray-400'
+                }`}>
+                <Icon size={16} className="shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-bold leading-tight">{title}</p>
+                  <p className="text-[11px] text-gray-500 mt-0.5 leading-snug">{sub}</p>
+                </div>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Image section */}
@@ -548,7 +571,7 @@ function ProductManagement() {
             <table className="w-full text-left">
               <thead className="bg-[#F2F0F1]">
                 <tr>
-                  {['รูป', 'ชื่อสินค้า', 'ราคา', 'Stock', 'หมวด', 'จัดการ'].map(h => (
+                  {['รูป', 'ชื่อสินค้า', 'ราคา', 'Stock', 'หมวด', 'จัดส่ง', 'จัดการ'].map(h => (
                     <th key={h} className="px-4 py-3 text-xs font-black uppercase tracking-wide text-gray-600">{h}</th>
                   ))}
                 </tr>
@@ -568,6 +591,17 @@ function ProductManagement() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-gray-500 uppercase">{p.cate}</td>
+                    <td className="px-4 py-3">
+                      {p.delivery_type === 'physical' ? (
+                        <span className="flex items-center gap-1 w-fit text-[10px] font-bold px-2 py-1 bg-amber-100 text-amber-700 rounded-full whitespace-nowrap">
+                          <Truck size={10} /> พัสดุ
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 w-fit text-[10px] font-bold px-2 py-1 bg-sky-100 text-sky-700 rounded-full whitespace-nowrap">
+                          <Zap size={10} /> ออนไลน์
+                        </span>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button onClick={() => setModal(p)}
@@ -1112,9 +1146,34 @@ function OrderManagement() {
                 </div>
               </div>
 
-              <div className="text-sm text-gray-600 mb-4">
+              <div className="text-sm text-gray-600 mb-3">
                 {o.items.map((it, i) => <span key={i}>{it.name} <span className="text-gray-400">x{it.quantity}</span>{i < o.items.length - 1 ? ', ' : ''}</span>)}
               </div>
+
+              {o.shipping_address ? (
+                <div className="flex items-start gap-2 mb-4 p-3 bg-amber-50 border border-amber-100 rounded-xl">
+                  <MapPin size={14} className="text-amber-500 shrink-0 mt-0.5" />
+                  <div className="text-xs leading-relaxed">
+                    <p className="font-bold text-amber-800">
+                      {o.shipping_address.recipient}
+                      {o.shipping_address.phone && <span className="font-normal text-amber-600"> · {o.shipping_address.phone}</span>}
+                    </p>
+                    <p className="text-amber-700">
+                      {[
+                        o.shipping_address.address,
+                        o.shipping_address.subdistrict && `ต.${o.shipping_address.subdistrict}`,
+                        o.shipping_address.district && `อ.${o.shipping_address.district}`,
+                        o.shipping_address.province && `จ.${o.shipping_address.province}`,
+                        o.shipping_address.postal_code,
+                      ].filter(Boolean).join(' ')}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 mb-4 text-xs text-sky-600 font-semibold">
+                  <Zap size={12} /> จัดส่งออนไลน์ (ดิจิทัล) — ไม่ต้องส่งพัสดุ
+                </div>
+              )}
 
               <div className="flex flex-wrap gap-2">
                 {next && (

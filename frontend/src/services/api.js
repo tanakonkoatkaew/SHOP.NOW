@@ -34,6 +34,13 @@ export const api = {
   profile:       ()     => request('GET',  '/auth/me/profile'),
   updateProfile: (body) => request('PUT',  '/auth/me/profile', body),
 
+  // Shipping address book
+  addresses:         ()          => request('GET',    '/auth/me/addresses'),
+  addAddress:        (body)      => request('POST',   '/auth/me/addresses', body),
+  updateAddress:     (id, body)  => request('PUT',    `/auth/me/addresses/${id}`, body),
+  deleteAddress:     (id)        => request('DELETE', `/auth/me/addresses/${id}`),
+  setDefaultAddress: (id)        => request('POST',   `/auth/me/addresses/${id}/default`),
+
   // Notifications
   notifications:     ()   => request('GET',  '/auth/me/notifications'),
   readNotification:  (id) => request('POST', '/auth/me/notifications/read', id ? { id } : {}),

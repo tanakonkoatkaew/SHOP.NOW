@@ -75,6 +75,20 @@ def create_checkout_session():
     if not ok:
         return jsonify(res), code
 
+    # Physical goods need somewhere to ship to — snapshot the chosen address so a
+    # later edit to the address book can't rewrite history on a placed order.
+    shipping_address = None
+    if res["requires_shipping"]:
+        addr_id = data.get("address_id")
+        addresses = user.get("addresses") or []
+        shipping_address = next((a for a in addresses if a.get("id") == addr_id), None)
+        if not shipping_address:
+            return jsonify({
+                "status": False,
+                "requires_shipping": True,
+                "msg": "กรุณาเลือกที่อยู่จัดส่ง (คำสั่งซื้อนี้มีสินค้าที่ต้องจัดส่ง)",
+            }), 400
+
     summary = res["summary"]
     pending_id = str(uuid.uuid4())
     pending = {
@@ -86,6 +100,8 @@ def create_checkout_session():
         "coupon_id": res["coupon_id"],
         "coupon_code": (data.get("coupon_code") or "").upper() or None,
         "points_used_pts": res["points_used_pts"],
+        "requires_shipping": res["requires_shipping"],
+        "shipping_address": shipping_address,
         "status": "awaiting_payment",
         "currency": os.getenv("STRIPE_CURRENCY", "thb"),
         "created_at": datetime.now(timezone.utc),

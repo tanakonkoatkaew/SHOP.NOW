@@ -1,17 +1,18 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ShoppingCart, Minus, Plus, Trash2, Tag, Star, ArrowLeft, Gift, CreditCard } from 'lucide-react'
+import { ShoppingCart, Minus, Plus, Trash2, Tag, Star, ArrowLeft, Gift, CreditCard, MapPin, Truck, Zap, Check } from 'lucide-react'
 import { useCart } from '../hooks/useCart'
 import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
 import Modal from '../components/Modal'
+import AddressForm, { formatAddress } from '../components/AddressForm'
 
 const POINTS_RATE = 0.05  // mirror backend POINTS_EARN_RATE
 
 export default function Cart() {
   const navigate = useNavigate()
-  const { items, setQty, removeItem, clear, subtotal, subtotalOriginal } = useCart()
+  const { items, setQty, removeItem, clear, subtotal, subtotalOriginal, requiresShipping } = useCart()
   const { user, refreshUser } = useAuth()
 
   const [coupon, setCoupon] = useState('')
@@ -20,6 +21,38 @@ export default function Cart() {
   const [useCredit, setUseCredit] = useState(false)
   const [placing, setPlacing] = useState(false)
   const [modal, setModal] = useState({ open: false })
+
+  // Shipping address (only needed when the cart has physical goods)
+  const [addresses, setAddresses] = useState([])
+  const [addrId, setAddrId] = useState(null)
+  const [addingAddr, setAddingAddr] = useState(false)
+  const [savingAddr, setSavingAddr] = useState(false)
+
+  const loadAddresses = () => {
+    api.addresses().then(({ ok, data }) => {
+      if (!ok) return
+      const list = data.results || []
+      setAddresses(list)
+      setAddrId(prev => prev || (list.find(a => a.is_default) || list[0])?.id || null)
+    })
+  }
+
+  useEffect(() => {
+    if (user && requiresShipping) loadAddresses()
+  }, [user, requiresShipping])
+
+  const saveNewAddress = async (form) => {
+    setSavingAddr(true)
+    const { ok, data } = await api.addAddress(form)
+    setSavingAddr(false)
+    if (ok && data.status) {
+      setAddingAddr(false)
+      setAddrId(data.address.id)
+      loadAddresses()
+    } else {
+      setModal({ open: true, type: 'error', title: 'บันทึกที่อยู่ไม่สำเร็จ', message: data.message || 'เกิดข้อผิดพลาด' })
+    }
+  }
 
   const availablePoints = parseFloat(user?.reward || 0)
   const availableCredit = parseFloat(user?.credit || 0)
@@ -47,12 +80,17 @@ export default function Cart() {
   const placeOrder = async () => {
     if (!user) { navigate('/login'); return }
     if (items.length === 0) return
+    if (requiresShipping && !addrId) {
+      setModal({ open: true, type: 'error', title: 'ยังไม่ได้เลือกที่อยู่', message: 'คำสั่งซื้อนี้มีสินค้าที่ต้องจัดส่ง กรุณาเลือกที่อยู่จัดส่งก่อน' })
+      return
+    }
     setPlacing(true)
     const { ok, data } = await api.createCheckoutSession({
       items: items.map(i => ({ product_id: i.id, qty: i.qty })),
       coupon_code: couponResult?.ok ? coupon.trim() : undefined,
       points: pointsValue,
       credit: creditValue,
+      address_id: requiresShipping ? addrId : undefined,
     })
     // Redirect to Stripe hosted checkout when a card payment is due
     if (ok && data.url) { window.location.href = data.url; return }
@@ -109,9 +147,18 @@ export default function Cart() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-slate-800 text-sm truncate">{it.name}</p>
-                  <div className="flex items-baseline gap-2 mt-1">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className={`font-bold text-sm ${onSale ? 'text-red-500' : 'text-slate-900'}`}>{it.price} ฿</span>
                     {onSale && <span className="text-xs text-gray-400 line-through">{it.original_price} ฿</span>}
+                    {it.delivery_type === 'physical' ? (
+                      <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">
+                        <Truck size={10} /> จัดส่งพัสดุ
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-sky-100 text-sky-700 rounded-full">
+                        <Zap size={10} /> ส่งออนไลน์
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -126,6 +173,70 @@ export default function Cart() {
               </motion.div>
             )
           })}
+
+          {/* Delivery */}
+          {requiresShipping ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-5 mt-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="flex items-center gap-2 font-black text-slate-900 text-sm">
+                  <MapPin size={16} className="text-amber-500" /> ที่อยู่จัดส่ง
+                  <span className="text-[10px] font-bold px-2 py-0.5 bg-red-100 text-red-600 rounded-full">จำเป็น</span>
+                </h3>
+                {!addingAddr && user && (
+                  <button onClick={() => setAddingAddr(true)}
+                    className="flex items-center gap-1 text-xs font-semibold text-amber-500 hover:text-amber-600 transition-colors">
+                    <Plus size={13} /> เพิ่มที่อยู่ใหม่
+                  </button>
+                )}
+              </div>
+
+              {!user ? (
+                <p className="text-sm text-slate-400">เข้าสู่ระบบเพื่อเลือกที่อยู่จัดส่ง</p>
+              ) : addingAddr ? (
+                <AddressForm onSave={saveNewAddress} onCancel={() => setAddingAddr(false)} saving={savingAddr} />
+              ) : addresses.length === 0 ? (
+                <div className="text-center py-4">
+                  <p className="text-sm text-slate-400 mb-2">ยังไม่มีที่อยู่จัดส่ง</p>
+                  <button onClick={() => setAddingAddr(true)} className="text-sm font-semibold text-amber-500 hover:text-amber-600">
+                    + เพิ่มที่อยู่จัดส่ง
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {addresses.map(a => {
+                    const selected = a.id === addrId
+                    return (
+                      <button key={a.id} onClick={() => setAddrId(a.id)}
+                        className={`w-full text-left flex items-start gap-3 rounded-xl border p-3 transition-colors ${
+                          selected ? 'border-amber-400 bg-amber-50/60' : 'border-slate-200 hover:border-slate-300'
+                        }`}>
+                        <div className={`w-4 h-4 rounded-full border-2 shrink-0 mt-0.5 flex items-center justify-center ${
+                          selected ? 'border-amber-500 bg-amber-500' : 'border-slate-300'
+                        }`}>
+                          {selected && <Check size={10} className="text-white" strokeWidth={4} />}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-800 text-sm">{a.recipient}</span>
+                            {a.label && <span className="text-[10px] font-bold px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded-full">{a.label}</span>}
+                          </div>
+                          <p className="text-xs text-slate-500 leading-relaxed mt-0.5">{formatAddress(a)}</p>
+                          {a.phone && <p className="text-[11px] text-slate-400 mt-0.5">โทร. {a.phone}</p>}
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 bg-sky-50 border border-sky-100 rounded-2xl p-4 mt-4">
+              <Zap size={18} className="text-sky-500 shrink-0" />
+              <p className="text-sm text-sky-700">
+                <span className="font-bold">จัดส่งออนไลน์</span> — สินค้าทั้งหมดเป็นแบบดิจิทัล ระบบจะส่งคีย์/รหัสให้ทันทีหลังชำระเงิน ไม่ต้องระบุที่อยู่
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Summary */}

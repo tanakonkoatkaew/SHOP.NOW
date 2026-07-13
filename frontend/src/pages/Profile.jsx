@@ -1,10 +1,135 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { User, Mail, Phone, Wallet, Star, History, CreditCard, Edit2, Check, X, MessageSquare, Link as LinkIcon, Camera, MapPin } from 'lucide-react'
+import {
+  User, Mail, Phone, Wallet, Star, History, CreditCard, Edit2, Check, X,
+  MessageSquare, Link as LinkIcon, Camera, MapPin, Plus, Trash2, Pencil,
+} from 'lucide-react'
 import { api } from '../services/api'
 import Spinner from '../components/Spinner'
 import { useAuth } from '../hooks/useAuth'
+import AddressForm, { formatAddress } from '../components/AddressForm'
+
+// ─── Shipping address book ───────────────────────────────────────────────────
+
+function AddressBook() {
+  const [addresses, setAddresses] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [editing, setEditing] = useState(null)   // null | 'new' | address object
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const load = () => {
+    api.addresses().then(({ ok, data }) => {
+      if (ok) setAddresses(data.results || [])
+      setLoading(false)
+    })
+  }
+  useEffect(load, [])
+
+  const handleSave = async (form) => {
+    setSaving(true)
+    const { ok, data } = editing === 'new'
+      ? await api.addAddress(form)
+      : await api.updateAddress(editing.id, form)
+    setSaving(false)
+    if (ok && data.status) { setEditing(null); setError(''); load() }
+    else setError(data.message || 'บันทึกไม่สำเร็จ')
+  }
+
+  const handleDelete = async (a) => {
+    if (!confirm(`ลบที่อยู่ "${a.label || a.recipient}"?`)) return
+    const { ok } = await api.deleteAddress(a.id)
+    if (ok) load()
+  }
+
+  const handleDefault = async (a) => {
+    const { ok } = await api.setDefaultAddress(a.id)
+    if (ok) load()
+  }
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-6 shadow-sm">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center border border-amber-100">
+            <MapPin size={18} className="text-amber-500" />
+          </div>
+          <div>
+            <p className="font-bold text-slate-800 text-sm">ที่อยู่จัดส่ง</p>
+            <p className="text-xs text-slate-400">ใช้ตอนสั่งซื้อสินค้าที่ต้องจัดส่ง</p>
+          </div>
+        </div>
+        {!editing && (
+          <button onClick={() => { setEditing('new'); setError('') }}
+            className="flex items-center gap-1.5 text-sm font-semibold text-amber-500 hover:text-amber-600 transition-colors">
+            <Plus size={15} /> เพิ่ม
+          </button>
+        )}
+      </div>
+
+      <div className="p-6">
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-600 text-xs font-medium rounded-lg px-3 py-2 mb-3">{error}</div>
+        )}
+
+        {editing ? (
+          <AddressForm
+            initial={editing === 'new' ? undefined : editing}
+            onSave={handleSave}
+            onCancel={() => { setEditing(null); setError('') }}
+            saving={saving}
+          />
+        ) : loading ? (
+          <Spinner />
+        ) : addresses.length === 0 ? (
+          <div className="text-center py-6">
+            <p className="text-sm text-slate-400 mb-2">ยังไม่ได้เพิ่มที่อยู่จัดส่ง</p>
+            <button onClick={() => setEditing('new')} className="text-sm font-semibold text-amber-500 hover:text-amber-600 transition-colors">
+              + เพิ่มที่อยู่จัดส่ง
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {addresses.map(a => (
+              <div key={a.id} className={`rounded-xl border p-4 transition-colors ${a.is_default ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200'}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                      <span className="font-bold text-slate-800 text-sm">{a.recipient}</span>
+                      {a.label && <span className="text-[10px] font-bold px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full">{a.label}</span>}
+                      {a.is_default && <span className="text-[10px] font-bold px-2 py-0.5 bg-amber-500 text-white rounded-full">ค่าเริ่มต้น</span>}
+                    </div>
+                    <p className="text-sm text-slate-600 leading-relaxed">{formatAddress(a)}</p>
+                    {a.phone && <p className="text-xs text-slate-400 mt-1">โทร. {a.phone}</p>}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <button onClick={() => { setEditing(a); setError('') }} title="แก้ไข"
+                      className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors">
+                      <Pencil size={14} />
+                    </button>
+                    <button onClick={() => handleDelete(a)} title="ลบ"
+                      className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+                {!a.is_default && (
+                  <button onClick={() => handleDefault(a)}
+                    className="mt-2 text-xs font-semibold text-slate-400 hover:text-amber-500 transition-colors">
+                    ตั้งเป็นค่าเริ่มต้น
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Profile page ────────────────────────────────────────────────────────────
 
 export default function Profile() {
   const navigate = useNavigate()
@@ -21,12 +146,6 @@ export default function Profile() {
     avatar: d.avatar || '',
     discord_id: d.discord_id || '',
     line_id: d.line_id || '',
-    recipient: d.recipient || '',
-    address: d.address || '',
-    subdistrict: d.subdistrict || '',
-    district: d.district || '',
-    province: d.province || '',
-    postal_code: d.postal_code || '',
   })
 
   const loadProfile = () => {
@@ -45,13 +164,13 @@ export default function Profile() {
   }, [navigate])
 
   const handleSave = async () => {
-    if (!editForm.username?.trim()) return alert("Username ต้องไม่ว่างเปล่า")
+    if (!editForm.username?.trim()) return alert('Username ต้องไม่ว่างเปล่า')
     setIsSaving(true)
     const { ok, data } = await api.updateProfile(editForm)
     if (ok && data.status) {
       setIsEditing(false)
       loadProfile()
-      refreshUser() // Update global user state (username, avatar)
+      refreshUser()
     } else {
       alert(data?.message || 'เกิดข้อผิดพลาด')
     }
@@ -60,14 +179,11 @@ export default function Profile() {
 
   if (loading) return <Spinner />
 
-  const hasAddress = Boolean(profile?.address || profile?.province)
-
   const fields = [
-    { icon: User,  label: 'Username', key: 'username', value: profile?.username },
-    { icon: Mail,  label: 'อีเมล',    key: 'email',    value: profile?.email, readonly: true },
-    { icon: Phone, label: 'โทรศัพท์', key: 'phone',    value: profile?.phone || '—' },
+    { icon: User, label: 'Username', key: 'username', value: profile?.username },
+    { icon: Mail, label: 'อีเมล', key: 'email', value: profile?.email, readonly: true },
+    { icon: Phone, label: 'โทรศัพท์', key: 'phone', value: profile?.phone || '—' },
     { icon: MessageSquare, label: 'Discord Webhook URL', key: 'discord_id', value: profile?.discord_id || '—' },
-
     { icon: LinkIcon, label: 'LINE ID', key: 'line_id', value: profile?.line_id || '—' },
   ]
 
@@ -81,24 +197,22 @@ export default function Profile() {
             {profile?.avatar ? (
               <img src={profile.avatar} alt="avatar" className="w-full h-full object-cover" />
             ) : (
-              <span className="text-4xl font-black text-white">
-                {profile?.username?.[0]?.toUpperCase() || 'U'}
-              </span>
+              <span className="text-4xl font-black text-white">{profile?.username?.[0]?.toUpperCase() || 'U'}</span>
             )}
             {isEditing && (
-              <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center transition-opacity">
+              <div className="absolute inset-0 bg-black/40 flex flex-col items-center justify-center">
                 <Camera size={24} className="text-white mb-1 drop-shadow-md" />
               </div>
             )}
           </div>
-          
+
           {isEditing ? (
             <div className="mb-4 max-w-xs mx-auto">
               <input
                 type="text"
                 placeholder="วาง URL รูปโปรไฟล์ (ถ้ามี)"
                 value={editForm.avatar}
-                onChange={e => setEditForm({...editForm, avatar: e.target.value})}
+                onChange={e => setEditForm({ ...editForm, avatar: e.target.value })}
                 className="w-full text-center text-sm px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
               />
             </div>
@@ -110,7 +224,7 @@ export default function Profile() {
           )}
 
           {!isEditing ? (
-            <button 
+            <button
               onClick={() => setIsEditing(true)}
               className="absolute right-0 top-0 text-amber-500 hover:text-amber-600 hover:bg-amber-50 px-3 py-2 rounded-xl transition-colors flex items-center gap-2 text-sm font-semibold"
             >
@@ -118,17 +232,14 @@ export default function Profile() {
             </button>
           ) : (
             <div className="absolute right-0 top-0 flex gap-2">
-              <button 
-                onClick={() => {
-                  setIsEditing(false)
-                  setEditForm(formFrom(profile))
-                }}
+              <button
+                onClick={() => { setIsEditing(false); setEditForm(formFrom(profile)) }}
                 className="text-slate-500 hover:bg-slate-100 p-2.5 rounded-full transition-colors bg-white shadow-sm border border-slate-200"
                 disabled={isSaving}
               >
                 <X size={18} />
               </button>
-              <button 
+              <button
                 onClick={handleSave}
                 className="text-white bg-amber-500 hover:bg-amber-600 p-2.5 rounded-full transition-colors shadow-sm"
                 disabled={isSaving}
@@ -168,7 +279,7 @@ export default function Profile() {
                   <input
                     type="text"
                     value={editForm[key]}
-                    onChange={e => setEditForm({...editForm, [key]: e.target.value})}
+                    onChange={e => setEditForm({ ...editForm, [key]: e.target.value })}
                     className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
                     placeholder={`กรอก ${label}`}
                   />
@@ -180,110 +291,8 @@ export default function Profile() {
           ))}
         </div>
 
-        {/* Shipping address */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-6 shadow-sm">
-          <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
-            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center border border-amber-100">
-              <MapPin size={18} className="text-amber-500" />
-            </div>
-            <div>
-              <p className="font-bold text-slate-800 text-sm">ที่อยู่จัดส่ง</p>
-              <p className="text-xs text-slate-400">ใช้สำหรับจัดส่งสินค้าของคุณ</p>
-            </div>
-          </div>
-
-          {isEditing ? (
-            <div className="p-6 space-y-4">
-              <div>
-                <p className="text-xs text-slate-400 mb-1">ชื่อผู้รับ</p>
-                <input
-                  type="text"
-                  value={editForm.recipient}
-                  onChange={e => setEditForm({ ...editForm, recipient: e.target.value })}
-                  placeholder="ชื่อ-นามสกุลผู้รับ"
-                  className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
-                />
-              </div>
-
-              <div>
-                <p className="text-xs text-slate-400 mb-1">ที่อยู่ (บ้านเลขที่ / หมู่ / ถนน)</p>
-                <textarea
-                  rows={2}
-                  value={editForm.address}
-                  onChange={e => setEditForm({ ...editForm, address: e.target.value })}
-                  placeholder="เช่น 99/1 หมู่ 5 ถ.สุขุมวิท"
-                  className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <p className="text-xs text-slate-400 mb-1">ตำบล / แขวง</p>
-                  <input
-                    type="text"
-                    value={editForm.subdistrict}
-                    onChange={e => setEditForm({ ...editForm, subdistrict: e.target.value })}
-                    className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400 mb-1">อำเภอ / เขต</p>
-                  <input
-                    type="text"
-                    value={editForm.district}
-                    onChange={e => setEditForm({ ...editForm, district: e.target.value })}
-                    className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400 mb-1">จังหวัด</p>
-                  <input
-                    type="text"
-                    value={editForm.province}
-                    onChange={e => setEditForm({ ...editForm, province: e.target.value })}
-                    className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
-                  />
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400 mb-1">รหัสไปรษณีย์</p>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    maxLength={5}
-                    value={editForm.postal_code}
-                    onChange={e => setEditForm({ ...editForm, postal_code: e.target.value.replace(/\D/g, '') })}
-                    placeholder="5 หลัก"
-                    className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-mono focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
-                  />
-                </div>
-              </div>
-            </div>
-          ) : hasAddress ? (
-            <div className="px-6 py-4">
-              {profile?.recipient && <p className="font-semibold text-slate-800 text-sm mb-1">{profile.recipient}</p>}
-              <p className="text-sm text-slate-600 leading-relaxed">
-                {[
-                  profile?.address,
-                  profile?.subdistrict && `ต.${profile.subdistrict}`,
-                  profile?.district && `อ.${profile.district}`,
-                  profile?.province && `จ.${profile.province}`,
-                  profile?.postal_code,
-                ].filter(Boolean).join(' ')}
-              </p>
-              {profile?.phone && <p className="text-xs text-slate-400 mt-1.5">โทร. {profile.phone}</p>}
-            </div>
-          ) : (
-            <div className="px-6 py-6 text-center">
-              <p className="text-sm text-slate-400 mb-2">ยังไม่ได้เพิ่มที่อยู่จัดส่ง</p>
-              <button
-                onClick={() => setIsEditing(true)}
-                className="text-sm font-semibold text-amber-500 hover:text-amber-600 transition-colors"
-              >
-                + เพิ่มที่อยู่จัดส่ง
-              </button>
-            </div>
-          )}
-        </div>
+        {/* Shipping address book */}
+        <AddressBook />
 
         {/* Quick links */}
         <div className="grid grid-cols-2 gap-3">
@@ -291,7 +300,7 @@ export default function Profile() {
             <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-white transition-colors">
               <History size={18} className="text-slate-400 group-hover:text-amber-500" />
             </div>
-            <span className="text-sm font-semibold text-slate-700">ประวัติการซื้อ</span>
+            <span className="text-sm font-semibold text-slate-700">ติดตามคำสั่งซื้อ</span>
           </Link>
           <Link to="/topup" className="flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-2xl hover:border-amber-300 hover:bg-amber-50 hover:shadow-md hover:shadow-amber-100 transition-all group">
             <div className="w-10 h-10 rounded-full bg-slate-50 flex items-center justify-center group-hover:bg-white transition-colors">

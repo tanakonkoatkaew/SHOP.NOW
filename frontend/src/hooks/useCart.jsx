@@ -38,6 +38,7 @@ export function CartProvider({ children }) {
         on_sale: !!product.on_sale,
         cate: product.cate,
         stock: product.stock ?? 99,
+        delivery_type: product.delivery_type || 'digital',
         qty: Math.max(1, qty),
       }]
     })
@@ -58,9 +59,11 @@ export function CartProvider({ children }) {
   const count = items.reduce((s, i) => s + i.qty, 0)
   const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0)
   const subtotalOriginal = items.reduce((s, i) => s + (i.original_price || i.price) * i.qty, 0)
+  // Any physical item means the order has to be shipped
+  const requiresShipping = items.some(i => i.delivery_type === 'physical')
 
   return (
-    <CartContext.Provider value={{ items, addItem, setQty, removeItem, clear, count, subtotal, subtotalOriginal }}>
+    <CartContext.Provider value={{ items, addItem, setQty, removeItem, clear, count, subtotal, subtotalOriginal, requiresShipping }}>
       {children}
     </CartContext.Provider>
   )

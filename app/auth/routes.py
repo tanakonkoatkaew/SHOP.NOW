@@ -7,6 +7,7 @@ import bcrypt
 import jwt
 import datetime
 import os
+import uuid
 
 auth_bp = Blueprint('auth', __name__)
 SECRET_KEY = get_jwt_secret()
@@ -258,6 +259,155 @@ def get_user_basic():
             "is_admin": bool(user.get("is_admin", False)),
         }
     })
+
+
+# ─── SHIPPING ADDRESS BOOK ───────────────────────────────────────────────────
+
+ADDRESS_FIELDS = ("label", "recipient", "phone", "address", "subdistrict", "district", "province", "postal_code")
+
+
+def _clean_address(data):
+    """Validate + normalise an address payload. Returns (ok, cleaned|error_msg)."""
+    cleaned = {k: str(data.get(k, "") or "").strip() for k in ADDRESS_FIELDS}
+
+    for key, label in (("recipient", "ชื่อผู้รับ"), ("address", "ที่อยู่"),
+                       ("province", "จังหวัด"), ("postal_code", "รหัสไปรษณีย์")):
+        if not cleaned[key]:
+            return False, f"กรุณากรอก{label}"
+
+    postal = cleaned["postal_code"]
+    if not (postal.isdigit() and len(postal) == 5):
+        return False, "รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก"
+
+    if not cleaned["label"]:
+        cleaned["label"] = "ที่อยู่จัดส่ง"
+    return True, cleaned
+
+
+def _load_addresses(db, user):
+    """Return the user's address book, seeding it once from the legacy
+    single-address profile fields so existing users don't lose what they saved."""
+    addresses = user.get("addresses")
+    if addresses:
+        return addresses
+    if user.get("address"):
+        legacy = {
+            "id": str(uuid.uuid4()),
+            "label": "ที่อยู่หลัก",
+            "recipient": user.get("recipient", "") or user.get("username", ""),
+            "phone": user.get("phone", ""),
+            "address": user.get("address", ""),
+            "subdistrict": user.get("subdistrict", ""),
+            "district": user.get("district", ""),
+            "province": user.get("province", ""),
+            "postal_code": user.get("postal_code", ""),
+            "is_default": True,
+        }
+        db.users.update_one({"_id": user["_id"]}, {"$set": {"addresses": [legacy]}})
+        return [legacy]
+    return []
+
+
+@auth_bp.route('/me/addresses', methods=['GET'])
+@auth_required
+def list_addresses():
+    db = get_db()
+    user = db.users.find_one({"_id": ObjectId(g.user_id)})
+    if not user:
+        return jsonify({"status": False, "message": "ไม่พบผู้ใช้"}), 404
+    return jsonify({"status": True, "results": _load_addresses(db, user)})
+
+
+@auth_bp.route('/me/addresses', methods=['POST'])
+@auth_required
+def add_address():
+    db = get_db()
+    user = db.users.find_one({"_id": ObjectId(g.user_id)})
+    if not user:
+        return jsonify({"status": False, "message": "ไม่พบผู้ใช้"}), 404
+
+    ok, res = _clean_address(request.json or {})
+    if not ok:
+        return jsonify({"status": False, "message": res}), 400
+
+    addresses = _load_addresses(db, user)
+    res["id"] = str(uuid.uuid4())
+    # First address is always the default
+    res["is_default"] = bool((request.json or {}).get("is_default")) or not addresses
+    if res["is_default"]:
+        for a in addresses:
+            a["is_default"] = False
+    addresses.append(res)
+    db.users.update_one({"_id": user["_id"]}, {"$set": {"addresses": addresses}})
+    return jsonify({"status": True, "message": "เพิ่มที่อยู่แล้ว", "address": res})
+
+
+@auth_bp.route('/me/addresses/<addr_id>', methods=['PUT'])
+@auth_required
+def update_address(addr_id):
+    db = get_db()
+    user = db.users.find_one({"_id": ObjectId(g.user_id)})
+    if not user:
+        return jsonify({"status": False, "message": "ไม่พบผู้ใช้"}), 404
+
+    ok, res = _clean_address(request.json or {})
+    if not ok:
+        return jsonify({"status": False, "message": res}), 400
+
+    addresses = _load_addresses(db, user)
+    target = next((a for a in addresses if a.get("id") == addr_id), None)
+    if not target:
+        return jsonify({"status": False, "message": "ไม่พบที่อยู่นี้"}), 404
+
+    make_default = bool((request.json or {}).get("is_default")) or target.get("is_default", False)
+    if make_default:
+        for a in addresses:
+            a["is_default"] = False
+    target.update(res)
+    target["id"] = addr_id
+    target["is_default"] = make_default
+
+    db.users.update_one({"_id": user["_id"]}, {"$set": {"addresses": addresses}})
+    return jsonify({"status": True, "message": "อัปเดตที่อยู่แล้ว", "address": target})
+
+
+@auth_bp.route('/me/addresses/<addr_id>', methods=['DELETE'])
+@auth_required
+def delete_address(addr_id):
+    db = get_db()
+    user = db.users.find_one({"_id": ObjectId(g.user_id)})
+    if not user:
+        return jsonify({"status": False, "message": "ไม่พบผู้ใช้"}), 404
+
+    addresses = _load_addresses(db, user)
+    remaining = [a for a in addresses if a.get("id") != addr_id]
+    if len(remaining) == len(addresses):
+        return jsonify({"status": False, "message": "ไม่พบที่อยู่นี้"}), 404
+
+    # Never leave the book without a default
+    if remaining and not any(a.get("is_default") for a in remaining):
+        remaining[0]["is_default"] = True
+
+    db.users.update_one({"_id": user["_id"]}, {"$set": {"addresses": remaining}})
+    return jsonify({"status": True, "message": "ลบที่อยู่แล้ว"})
+
+
+@auth_bp.route('/me/addresses/<addr_id>/default', methods=['POST'])
+@auth_required
+def set_default_address(addr_id):
+    db = get_db()
+    user = db.users.find_one({"_id": ObjectId(g.user_id)})
+    if not user:
+        return jsonify({"status": False, "message": "ไม่พบผู้ใช้"}), 404
+
+    addresses = _load_addresses(db, user)
+    if not any(a.get("id") == addr_id for a in addresses):
+        return jsonify({"status": False, "message": "ไม่พบที่อยู่นี้"}), 404
+
+    for a in addresses:
+        a["is_default"] = (a.get("id") == addr_id)
+    db.users.update_one({"_id": user["_id"]}, {"$set": {"addresses": addresses}})
+    return jsonify({"status": True, "message": "ตั้งเป็นที่อยู่หลักแล้ว"})
 
 
 # ─── IN-APP NOTIFICATIONS ────────────────────────────────────────────────────

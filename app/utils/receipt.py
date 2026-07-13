@@ -93,7 +93,34 @@ def _summary_html(summary):
     return html
 
 
-def build_receipt(receipt_id, username, items, summary):
+def format_address(addr):
+    """One-line Thai address string, or '' if there is nothing to show."""
+    if not addr:
+        return ""
+    parts = [
+        addr.get("address", ""),
+        f"ต.{addr['subdistrict']}" if addr.get("subdistrict") else "",
+        f"อ.{addr['district']}" if addr.get("district") else "",
+        f"จ.{addr['province']}" if addr.get("province") else "",
+        addr.get("postal_code", ""),
+    ]
+    return " ".join(p for p in parts if p)
+
+
+def _shipping_html(addr):
+    if not addr:
+        return ""
+    phone = f"<br>โทร. {addr['phone']}" if addr.get("phone") else ""
+    return f"""
+    <div style="margin-top:20px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;">
+      <div style="font-size:12px;color:#b45309;font-weight:700;text-transform:uppercase;margin-bottom:6px;">📦 ที่อยู่จัดส่ง</div>
+      <div style="font-size:14px;color:#78350f;line-height:1.6;">
+        <strong>{addr.get('recipient', '')}</strong><br>{format_address(addr)}{phone}
+      </div>
+    </div>"""
+
+
+def build_receipt(receipt_id, username, items, summary, shipping_address=None):
     """Return (subject, html, text) for an order receipt."""
     now = datetime.now(timezone.utc).strftime("%d/%m/%Y %H:%M:%S UTC")
     subject = f"🧾 ใบเสร็จคำสั่งซื้อ #{receipt_id[:8].upper()} - ShopNow"
@@ -108,6 +135,7 @@ def build_receipt(receipt_id, username, items, summary):
         </div>
         <table style="width:100%;border-collapse:collapse;">{_rows_html(items)}</table>
         <table style="width:100%;border-collapse:collapse;margin-top:16px;border-top:2px solid #e2e8f0;padding-top:8px;">{_summary_html(summary)}</table>
+        {_shipping_html(shipping_address)}
         <div style="margin-top:24px;font-size:12px;color:#94a3b8;text-align:center;">
           ผู้สั่งซื้อ: {username}<br>เลขที่ใบเสร็จ: <code>{receipt_id}</code><br>วันเวลา: {now}
         </div>
@@ -129,18 +157,20 @@ def build_receipt(receipt_id, username, items, summary):
     lines.append(f"ยอดชำระสุทธิ: {summary['total']:.2f} ฿")
     if summary.get("points_earned", 0) > 0:
         lines.append(f"แต้มที่ได้รับ: +{summary['points_earned']:.2f}")
+    if shipping_address:
+        lines.append(f"\nที่อยู่จัดส่ง: {shipping_address.get('recipient', '')} — {format_address(shipping_address)}")
     lines.append(f"\nเลขที่ใบเสร็จ: {receipt_id}\nวันเวลา: {now}")
     text = "\n".join(lines)
     return subject, html, text
 
 
-def send_order_receipt(user, receipt_id, items, summary):
+def send_order_receipt(user, receipt_id, items, summary, shipping_address=None):
     """Deliver a receipt to the buyer over their preferred channel."""
     try:
         email = (user.get("email") or "").strip()
         webhook = (user.get("discord_id") or "").strip()
         is_google = bool(user.get("google_user_id"))
-        subject, html, text = build_receipt(receipt_id, user.get("username", ""), items, summary)
+        subject, html, text = build_receipt(receipt_id, user.get("username", ""), items, summary, shipping_address)
 
         if is_google and email:
             send_email_async(email, subject, html, text)
@@ -153,6 +183,12 @@ def send_order_receipt(user, receipt_id, items, summary):
             fields.append({"name": "💰 ยอดชำระสุทธิ", "value": f"{summary['total']:.2f} ฿", "inline": True})
             if summary.get("points_earned", 0) > 0:
                 fields.append({"name": "⭐ แต้มที่ได้รับ", "value": f"+{summary['points_earned']:.2f}", "inline": True})
+            if shipping_address:
+                fields.append({
+                    "name": "📦 ที่อยู่จัดส่ง",
+                    "value": f"{shipping_address.get('recipient', '')}\n{format_address(shipping_address)}",
+                    "inline": False,
+                })
             _post_discord(webhook, {"embeds": [{
                 "title": f"🧾 ใบเสร็จคำสั่งซื้อ #{receipt_id[:8].upper()} (ShopNow)",
                 "color": 0xFFB900,

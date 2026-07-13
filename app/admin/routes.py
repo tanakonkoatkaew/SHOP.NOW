@@ -158,6 +158,7 @@ def list_products():
             "sale_start":  start.isoformat() if hasattr(start, "isoformat") else (start or ""),
             "sale_end":    end.isoformat() if hasattr(end, "isoformat") else (end or ""),
             "on_sale":     ep["on_sale"],
+            "delivery_type": p.get("delivery_type", "digital"),
         })
     return jsonify({"status": True, "results": results})
 
@@ -181,6 +182,7 @@ def create_product():
         "sale_price":  float(data.get("sale_price") or 0),
         "sale_start":  _parse_dt(data.get("sale_start")),
         "sale_end":    _parse_dt(data.get("sale_end")),
+        "delivery_type": ("physical" if data.get("delivery_type") == "physical" else "digital"),
     }
     result = db.products.insert_one(doc)
     return jsonify({"status": True, "id": str(result.inserted_id), "message": "เพิ่มสินค้าสำเร็จ"})
@@ -207,6 +209,8 @@ def update_product(product_id):
     if "sale_price"  in data: updates["sale_price"]  = float(data.get("sale_price") or 0)
     if "sale_start"  in data: updates["sale_start"]  = _parse_dt(data.get("sale_start"))
     if "sale_end"    in data: updates["sale_end"]    = _parse_dt(data.get("sale_end"))
+    if "delivery_type" in data:
+        updates["delivery_type"] = "physical" if data["delivery_type"] == "physical" else "digital"
 
     db.products.update_one({"_id": oid}, {"$set": updates})
     return jsonify({"status": True, "message": "อัพเดทสินค้าสำเร็จ"})
@@ -439,6 +443,7 @@ def list_orders():
                 "dt_purchased": purchased_str,
                 "items": [],
                 "total": 0.0,
+                "shipping_address": None,
             }
             order.append(rid)
         line_total = o.get("line_total")
@@ -447,7 +452,10 @@ def list_orders():
         receipts[rid]["items"].append({
             "name": o.get("product_name", ""),
             "quantity": o.get("quantity", 1),
+            "delivery_type": o.get("delivery_type", "digital"),
         })
+        if o.get("shipping_address") and not receipts[rid]["shipping_address"]:
+            receipts[rid]["shipping_address"] = o["shipping_address"]
         receipts[rid]["total"] += float(line_total)
 
     # Attach usernames
