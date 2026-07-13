@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Eye, EyeOff, ShoppingBag, LogIn, ShieldCheck, ChevronDown } from 'lucide-react'
 import { useAuth } from '../hooks/useAuth'
-import { DiscordIcon, GoogleIcon, FacebookIcon, socialBtn } from '../components/SocialButtons'
+import { DiscordButton, GoogleButton, FacebookButton } from '../components/SocialButtons'
 
 export default function Login() {
   const { login, refreshUser } = useAuth()
@@ -55,17 +55,9 @@ export default function Login() {
         <div className="bg-white border-2 border-gray-100 rounded-2xl p-8">
           {/* Primary: Social login */}
           <div className="space-y-3">
-            <button type="button" onClick={() => window.location.href = '/api/auth/discord'} className={socialBtn}>
-              <DiscordIcon /> เข้าสู่ระบบด้วย Discord
-            </button>
-
-            <button type="button" onClick={() => window.location.href = '/api/auth/google'} className={socialBtn}>
-              <GoogleIcon /> เข้าสู่ระบบด้วย Google
-            </button>
-
-            <button type="button" onClick={() => window.location.href = '/api/auth/facebook'} className={socialBtn}>
-              <FacebookIcon /> เข้าสู่ระบบด้วย Facebook
-            </button>
+            <DiscordButton label="เข้าสู่ระบบด้วย Discord" onClick={() => window.location.href = '/api/auth/discord'} />
+            <GoogleButton label="เข้าสู่ระบบด้วย Google" onClick={() => window.location.href = '/api/auth/google'} />
+            <FacebookButton label="เข้าสู่ระบบด้วย Facebook" onClick={() => window.location.href = '/api/auth/facebook'} />
           </div>
 
           <p className="text-center text-sm text-gray-500 mt-6">

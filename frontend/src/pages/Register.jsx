@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ShoppingBag } from 'lucide-react'
-import { DiscordIcon, GoogleIcon, FacebookIcon, socialBtn } from '../components/SocialButtons'
+import { DiscordButton, GoogleButton, FacebookButton } from '../components/SocialButtons'
 
 export default function Register() {
   return (
@@ -22,17 +22,9 @@ export default function Register() {
 
         <div className="bg-white border-2 border-gray-100 rounded-2xl p-8">
           <div className="space-y-3">
-            <button type="button" onClick={() => window.location.href = '/api/auth/discord'} className={socialBtn}>
-              <DiscordIcon /> สมัครด้วย Discord
-            </button>
-
-            <button type="button" onClick={() => window.location.href = '/api/auth/google'} className={socialBtn}>
-              <GoogleIcon /> สมัครด้วย Google
-            </button>
-
-            <button type="button" onClick={() => window.location.href = '/api/auth/facebook'} className={socialBtn}>
-              <FacebookIcon /> สมัครด้วย Facebook
-            </button>
+            <DiscordButton label="สมัครด้วย Discord" onClick={() => window.location.href = '/api/auth/discord'} />
+            <GoogleButton label="สมัครด้วย Google" onClick={() => window.location.href = '/api/auth/google'} />
+            <FacebookButton label="สมัครด้วย Facebook" onClick={() => window.location.href = '/api/auth/facebook'} />
           </div>
 
           <p className="text-center text-xs text-gray-400 mt-6 leading-relaxed">
