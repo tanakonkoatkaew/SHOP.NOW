@@ -182,7 +182,14 @@ def get_profile():
             "reward": float(user.get("reward", 0)),
             "avatar": user.get("avatar", ""),
             "discord_id": user.get("discord_id", ""),
-            "line_id": user.get("line_id", "")
+            "line_id": user.get("line_id", ""),
+            # ที่อยู่จัดส่ง
+            "recipient":   user.get("recipient", ""),
+            "address":     user.get("address", ""),
+            "subdistrict": user.get("subdistrict", ""),
+            "district":    user.get("district", ""),
+            "province":    user.get("province", ""),
+            "postal_code": user.get("postal_code", ""),
         }
     })
 
@@ -210,7 +217,18 @@ def update_profile():
         update_fields["discord_id"] = data["discord_id"].strip()
     if "line_id" in data:
         update_fields["line_id"] = data["line_id"].strip()
-        
+
+    # ที่อยู่จัดส่ง
+    for key in ("recipient", "address", "subdistrict", "district", "province"):
+        if key in data:
+            update_fields[key] = str(data[key]).strip()
+
+    if "postal_code" in data:
+        postal = str(data["postal_code"]).strip()
+        if postal and not (postal.isdigit() and len(postal) == 5):
+            return jsonify({"status": False, "message": "รหัสไปรษณีย์ต้องเป็นตัวเลข 5 หลัก"}), 400
+        update_fields["postal_code"] = postal
+
     if update_fields:
         db.users.update_one({"_id": ObjectId(g.user_id)}, {"$set": update_fields})
         

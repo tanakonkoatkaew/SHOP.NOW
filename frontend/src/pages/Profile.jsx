@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { User, Mail, Phone, Wallet, Star, History, CreditCard, Edit2, Check, X, MessageSquare, Link as LinkIcon, Camera } from 'lucide-react'
+import { User, Mail, Phone, Wallet, Star, History, CreditCard, Edit2, Check, X, MessageSquare, Link as LinkIcon, Camera, MapPin } from 'lucide-react'
 import { api } from '../services/api'
 import Spinner from '../components/Spinner'
 import { useAuth } from '../hooks/useAuth'
@@ -15,17 +15,25 @@ export default function Profile() {
   const [editForm, setEditForm] = useState({})
   const [isSaving, setIsSaving] = useState(false)
 
+  const formFrom = (d) => ({
+    username: d.username || '',
+    phone: d.phone || '',
+    avatar: d.avatar || '',
+    discord_id: d.discord_id || '',
+    line_id: d.line_id || '',
+    recipient: d.recipient || '',
+    address: d.address || '',
+    subdistrict: d.subdistrict || '',
+    district: d.district || '',
+    province: d.province || '',
+    postal_code: d.postal_code || '',
+  })
+
   const loadProfile = () => {
     api.profile().then(({ ok, data }) => {
       if (ok && data.data) {
         setProfile(data.data)
-        setEditForm({
-          username: data.data.username || '',
-          phone: data.data.phone || '',
-          avatar: data.data.avatar || '',
-          discord_id: data.data.discord_id || '',
-          line_id: data.data.line_id || ''
-        })
+        setEditForm(formFrom(data.data))
       }
       setLoading(false)
     })
@@ -51,6 +59,8 @@ export default function Profile() {
   }
 
   if (loading) return <Spinner />
+
+  const hasAddress = Boolean(profile?.address || profile?.province)
 
   const fields = [
     { icon: User,  label: 'Username', key: 'username', value: profile?.username },
@@ -111,13 +121,7 @@ export default function Profile() {
               <button 
                 onClick={() => {
                   setIsEditing(false)
-                  setEditForm({
-                    username: profile.username || '',
-                    phone: profile.phone || '',
-                    avatar: profile.avatar || '',
-                    discord_id: profile.discord_id || '',
-                    line_id: profile.line_id || ''
-                  })
+                  setEditForm(formFrom(profile))
                 }}
                 className="text-slate-500 hover:bg-slate-100 p-2.5 rounded-full transition-colors bg-white shadow-sm border border-slate-200"
                 disabled={isSaving}
@@ -174,6 +178,111 @@ export default function Profile() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* Shipping address */}
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden mb-6 shadow-sm">
+          <div className="flex items-center gap-3 px-6 py-4 border-b border-slate-100">
+            <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center border border-amber-100">
+              <MapPin size={18} className="text-amber-500" />
+            </div>
+            <div>
+              <p className="font-bold text-slate-800 text-sm">ที่อยู่จัดส่ง</p>
+              <p className="text-xs text-slate-400">ใช้สำหรับจัดส่งสินค้าของคุณ</p>
+            </div>
+          </div>
+
+          {isEditing ? (
+            <div className="p-6 space-y-4">
+              <div>
+                <p className="text-xs text-slate-400 mb-1">ชื่อผู้รับ</p>
+                <input
+                  type="text"
+                  value={editForm.recipient}
+                  onChange={e => setEditForm({ ...editForm, recipient: e.target.value })}
+                  placeholder="ชื่อ-นามสกุลผู้รับ"
+                  className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
+                />
+              </div>
+
+              <div>
+                <p className="text-xs text-slate-400 mb-1">ที่อยู่ (บ้านเลขที่ / หมู่ / ถนน)</p>
+                <textarea
+                  rows={2}
+                  value={editForm.address}
+                  onChange={e => setEditForm({ ...editForm, address: e.target.value })}
+                  placeholder="เช่น 99/1 หมู่ 5 ถ.สุขุมวิท"
+                  className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 resize-none focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">ตำบล / แขวง</p>
+                  <input
+                    type="text"
+                    value={editForm.subdistrict}
+                    onChange={e => setEditForm({ ...editForm, subdistrict: e.target.value })}
+                    className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">อำเภอ / เขต</p>
+                  <input
+                    type="text"
+                    value={editForm.district}
+                    onChange={e => setEditForm({ ...editForm, district: e.target.value })}
+                    className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">จังหวัด</p>
+                  <input
+                    type="text"
+                    value={editForm.province}
+                    onChange={e => setEditForm({ ...editForm, province: e.target.value })}
+                    className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
+                  />
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400 mb-1">รหัสไปรษณีย์</p>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={5}
+                    value={editForm.postal_code}
+                    onChange={e => setEditForm({ ...editForm, postal_code: e.target.value.replace(/\D/g, '') })}
+                    placeholder="5 หลัก"
+                    className="w-full text-sm font-medium text-slate-800 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-mono focus:outline-none focus:border-amber-400 focus:bg-white transition-colors"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : hasAddress ? (
+            <div className="px-6 py-4">
+              {profile?.recipient && <p className="font-semibold text-slate-800 text-sm mb-1">{profile.recipient}</p>}
+              <p className="text-sm text-slate-600 leading-relaxed">
+                {[
+                  profile?.address,
+                  profile?.subdistrict && `ต.${profile.subdistrict}`,
+                  profile?.district && `อ.${profile.district}`,
+                  profile?.province && `จ.${profile.province}`,
+                  profile?.postal_code,
+                ].filter(Boolean).join(' ')}
+              </p>
+              {profile?.phone && <p className="text-xs text-slate-400 mt-1.5">โทร. {profile.phone}</p>}
+            </div>
+          ) : (
+            <div className="px-6 py-6 text-center">
+              <p className="text-sm text-slate-400 mb-2">ยังไม่ได้เพิ่มที่อยู่จัดส่ง</p>
+              <button
+                onClick={() => setIsEditing(true)}
+                className="text-sm font-semibold text-amber-500 hover:text-amber-600 transition-colors"
+              >
+                + เพิ่มที่อยู่จัดส่ง
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Quick links */}
