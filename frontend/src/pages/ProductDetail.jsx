@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ShieldCheck, Minus, Plus, ArrowLeft, ShoppingCart, Zap, Star, Check } from 'lucide-react'
+import { ShieldCheck, Minus, Plus, ArrowLeft, ShoppingCart, Zap, Star, Check, Truck } from 'lucide-react'
 import { api } from '../services/api'
 import { useCart } from '../hooks/useCart'
 import Spinner from '../components/Spinner'
@@ -123,6 +123,25 @@ export default function ProductDetail() {
                   {countdown.d > 0 && <span>{countdown.d}วัน</span>}
                   <span>{String(countdown.h).padStart(2, '0')}:{String(countdown.m).padStart(2, '0')}:{String(countdown.s).padStart(2, '0')}</span>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Delivery mode */}
+          {product.delivery_type === 'physical' ? (
+            <div className="flex items-start gap-3 bg-amber-50 border border-amber-100 rounded-xl px-4 py-3">
+              <Truck size={18} className="text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-amber-700">จัดส่งพัสดุ</p>
+                <p className="text-xs text-amber-600 mt-0.5">ระบุที่อยู่จัดส่งตอนชำระเงิน · ติดตามสถานะได้ทุกขั้นตอน</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-start gap-3 bg-sky-50 border border-sky-100 rounded-xl px-4 py-3">
+              <Zap size={18} className="text-sky-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-bold text-sky-700">จัดส่งออนไลน์ทันที</p>
+                <p className="text-xs text-sky-600 mt-0.5">รับคีย์/รหัสทันทีหลังชำระเงิน ไม่ต้องระบุที่อยู่</p>
               </div>
             </div>
           )}

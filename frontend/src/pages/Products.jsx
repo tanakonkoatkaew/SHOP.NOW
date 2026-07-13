@@ -56,6 +56,11 @@ export default function Products() {
     })
   }, [])
 
+  // Keep the category in sync when navigating to /products?cat=... from elsewhere
+  useEffect(() => {
+    setCat(new URLSearchParams(location.search).get('cat') || 'all')
+  }, [location.search])
+
   useEffect(() => {
     let res = all
     if (cat !== 'all') res = res.filter(p => String(p.cate) === cat || p.name?.toLowerCase().includes(cat))

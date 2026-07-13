@@ -7,10 +7,11 @@ import { useCart } from '../hooks/useCart'
 import NotificationBell from './NotificationBell'
 
 const navLinks = [
-  { to: '/products', label: 'สินค้า' },
-  { to: '/topup',    label: 'เติมเงิน' },
-  { to: '/coupons',  label: 'คูปอง' },
-  { to: '/contact',  label: 'ติดต่อ' },
+  { to: '/products',              label: 'สินค้า' },
+  { to: '/products?cat=fashion',  label: 'แฟชั่น' },
+  { to: '/coupons',               label: 'คูปอง' },
+  { to: '/topup',                 label: 'Store Credit' },
+  { to: '/contact',               label: 'ติดต่อ' },
 ]
 
 export default function Navbar() {
@@ -46,7 +47,8 @@ export default function Navbar() {
           {/* Desktop nav links */}
           <nav className="hidden md:flex items-center gap-6">
             {navLinks.map(({ to, label }) => {
-              const active = location.pathname === to
+              // Links carry a query string (e.g. ?cat=fashion), so match on the full path
+              const active = `${location.pathname}${location.search}` === to
               return (
                 <Link
                   key={to}
