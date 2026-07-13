@@ -10,6 +10,7 @@ const CATS = [
   { label: 'เกม',       value: 'game' },
   { label: 'ซอฟต์แวร์', value: 'software' },
   { label: 'เติมเงิน',  value: 'topup' },
+  { label: 'แฟชั่น',    value: 'fashion' },
 ]
 
 const SORT_OPTIONS = [
@@ -54,6 +55,11 @@ export default function Products() {
       setLoading(false)
     })
   }, [])
+
+  // Keep the category in sync when navigating to /products?cat=... from elsewhere
+  useEffect(() => {
+    setCat(new URLSearchParams(location.search).get('cat') || 'all')
+  }, [location.search])
 
   useEffect(() => {
     let res = all

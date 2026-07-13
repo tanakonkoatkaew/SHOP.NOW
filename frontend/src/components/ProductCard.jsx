@@ -50,6 +50,11 @@ export default function ProductCard({ product, index = 0 }) {
               -{off}%
             </span>
           )}
+          <span className={`absolute top-3 right-3 text-[10px] font-bold px-2 py-1 rounded-full shadow-sm ${
+            product.delivery_type === 'physical' ? 'bg-amber-500 text-white' : 'bg-sky-500 text-white'
+          }`}>
+            {product.delivery_type === 'physical' ? '🚚 พัสดุ' : '⚡ ออนไลน์'}
+          </span>
           {outOfStock && (
             <div className="absolute inset-0 bg-white/60 flex items-center justify-center">
               <span className="bg-black text-white text-xs font-bold px-3 py-1.5 rounded-full">สินค้าหมด</span>

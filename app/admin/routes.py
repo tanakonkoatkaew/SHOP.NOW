@@ -36,12 +36,12 @@ UPLOAD_FOLDER  = SLIP_FOLDER  # legacy alias
 @admin_required
 def stats():
     db = get_db()
-    pending_slips = db.pending_qr_payments.count_documents({"status": "pending_review"})
-    total_approved = list(db.pending_qr_payments.aggregate([
-        {"$match": {"status": "approved"}},
-        {"$group": {"_id": None, "total": {"$sum": "$amount"}}}
+    # Revenue = money actually collected on paid orders (Stripe + store credit)
+    paid = list(db.pending_orders.aggregate([
+        {"$match": {"status": "paid"}},
+        {"$group": {"_id": None, "total": {"$sum": "$summary.total"}}}
     ]))
-    revenue = total_approved[0]["total"] if total_approved else 0
+    revenue = paid[0]["total"] if paid else 0
 
     # Best-selling products (by number of orders / quantity)
     best_sellers = list(db.orders.aggregate([
@@ -104,7 +104,6 @@ def stats():
         "status": True,
         "users":         db.users.count_documents({}),
         "products":      db.products.count_documents({}),
-        "pending_slips": pending_slips,
         "total_revenue": round(revenue, 2),
         "orders":        db.orders.count_documents({}),
         "pending_orders": pending_orders,
@@ -113,81 +112,6 @@ def stats():
         "revenue_by_day": revenue_by_day,
         "sales_by_category": sales_by_category,
     })
-
-
-# ─── SLIP MANAGEMENT ─────────────────────────────────────────────────────────
-
-@admin_bp.route('/slips', methods=['GET'])
-@admin_required
-def list_slips():
-    db = get_db()
-    status = request.args.get("status", "pending_review")
-    query = {"slip_uploaded": True} if status == "all" else {"status": status}
-
-    payments = db.pending_qr_payments.find(query).sort("created_at", -1).limit(200)
-    results = []
-    for p in payments:
-        results.append({
-            "ref":           p["_id"],
-            "user_id":       str(p.get("user_id", "")),
-            "username":      p.get("username", "—"),
-            "amount":        p.get("amount", 0),
-            "status":        p.get("status", ""),
-            "created_at":    p["created_at"].isoformat() if p.get("created_at") else "",
-            "slip_image_url": p.get("slip_image_url", ""),
-        })
-    return jsonify({"status": True, "results": results})
-
-
-@admin_bp.route('/slips/<ref>/approve', methods=['POST'])
-@admin_required
-def approve_slip(ref):
-    db = get_db()
-    payment = db.pending_qr_payments.find_one({"_id": ref})
-    if not payment:
-        return jsonify({"status": False, "message": "ไม่พบรายการ"}), 404
-    if payment.get("status") not in ("pending_review", "pending"):
-        return jsonify({"status": False, "message": "รายการนี้ไม่ได้รอตรวจสอบ"}), 400
-
-    db.users.update_one(
-        {"_id": payment["user_id"]},
-        {"$inc": {"credit": payment["amount"]}}
-    )
-    db.pending_qr_payments.update_one({"_id": ref}, {"$set": {
-        "status": "approved",
-        "credited": True,
-        "approved_at": datetime.now(timezone.utc),
-    }})
-    push_notification(
-        db, payment["user_id"],
-        title="เติมเงินสำเร็จ ✅",
-        body=f"ยอด {payment['amount']:.2f} ฿ ถูกเพิ่มเข้าบัญชีของคุณเรียบร้อยแล้ว",
-        ntype="success",
-    )
-    return jsonify({"status": True, "message": f"อนุมัติ {payment['amount']:.2f} ฿ ให้ {payment.get('username','')} แล้ว"})
-
-
-@admin_bp.route('/slips/<ref>/reject', methods=['POST'])
-@admin_required
-def reject_slip(ref):
-    db = get_db()
-    payment = db.pending_qr_payments.find_one({"_id": ref})
-    if not payment:
-        return jsonify({"status": False, "message": "ไม่พบรายการ"}), 404
-
-    reason = request.json.get("reason", "") if request.is_json else ""
-    db.pending_qr_payments.update_one({"_id": ref}, {"$set": {
-        "status": "rejected",
-        "reject_reason": reason,
-        "rejected_at": datetime.now(timezone.utc),
-    }})
-    push_notification(
-        db, payment["user_id"],
-        title="สลิปเติมเงินถูกปฏิเสธ ❌",
-        body=(f"เหตุผล: {reason}" if reason else "กรุณาตรวจสอบสลิปและลองใหม่อีกครั้ง"),
-        ntype="error",
-    )
-    return jsonify({"status": True, "message": "ปฏิเสธสลิปแล้ว"})
 
 
 # ─── PRODUCT IMAGE UPLOAD ────────────────────────────────────────────────────
@@ -234,6 +158,7 @@ def list_products():
             "sale_start":  start.isoformat() if hasattr(start, "isoformat") else (start or ""),
             "sale_end":    end.isoformat() if hasattr(end, "isoformat") else (end or ""),
             "on_sale":     ep["on_sale"],
+            "delivery_type": p.get("delivery_type", "digital"),
         })
     return jsonify({"status": True, "results": results})
 
@@ -257,6 +182,7 @@ def create_product():
         "sale_price":  float(data.get("sale_price") or 0),
         "sale_start":  _parse_dt(data.get("sale_start")),
         "sale_end":    _parse_dt(data.get("sale_end")),
+        "delivery_type": ("physical" if data.get("delivery_type") == "physical" else "digital"),
     }
     result = db.products.insert_one(doc)
     return jsonify({"status": True, "id": str(result.inserted_id), "message": "เพิ่มสินค้าสำเร็จ"})
@@ -283,6 +209,8 @@ def update_product(product_id):
     if "sale_price"  in data: updates["sale_price"]  = float(data.get("sale_price") or 0)
     if "sale_start"  in data: updates["sale_start"]  = _parse_dt(data.get("sale_start"))
     if "sale_end"    in data: updates["sale_end"]    = _parse_dt(data.get("sale_end"))
+    if "delivery_type" in data:
+        updates["delivery_type"] = "physical" if data["delivery_type"] == "physical" else "digital"
 
     db.products.update_one({"_id": oid}, {"$set": updates})
     return jsonify({"status": True, "message": "อัพเดทสินค้าสำเร็จ"})
@@ -299,94 +227,6 @@ def delete_product(product_id):
 
     db.products.delete_one({"_id": oid})
     return jsonify({"status": True, "message": "ลบสินค้าสำเร็จ"})
-
-
-# ─── TRUEMONEY VOUCHER MANAGEMENT ────────────────────────────────────────────
-
-@admin_bp.route('/truemoney', methods=['GET'])
-@admin_required
-def list_truemoney():
-    db = get_db()
-    status = request.args.get("status", "pending_review")
-    query = {} if status == "all" else {"status": status}
-    vouchers = db.truemoney_vouchers.find(query).sort("created_at", -1).limit(200)
-    results = []
-    for v in vouchers:
-        results.append({
-            "id":           str(v["_id"]),
-            "username":     v.get("username", "—"),
-            "user_id":      str(v.get("user_id", "")),
-            "voucher_hash": v.get("voucher_hash", ""),
-            "voucher_url":  v.get("voucher_url", ""),
-            "amount":       v.get("amount"),
-            "status":       v.get("status", ""),
-            "auto_redeemed": v.get("auto_redeemed", False),
-            "created_at":   v["created_at"].isoformat() if v.get("created_at") else "",
-        })
-    return jsonify({"status": True, "results": results})
-
-
-@admin_bp.route('/truemoney/<voucher_id>/approve', methods=['POST'])
-@admin_required
-def approve_truemoney(voucher_id):
-    db = get_db()
-    try:
-        oid = ObjectId(voucher_id)
-    except Exception:
-        return jsonify({"status": False, "message": "ID ไม่ถูกต้อง"}), 400
-
-    voucher = db.truemoney_vouchers.find_one({"_id": oid})
-    if not voucher:
-        return jsonify({"status": False, "message": "ไม่พบรายการ"}), 404
-    if voucher.get("status") != "pending_review":
-        return jsonify({"status": False, "message": "รายการนี้ไม่ได้รอตรวจสอบ"}), 400
-
-    data = request.json or {}
-    amount = float(data.get("amount", 0))
-    if amount <= 0:
-        return jsonify({"status": False, "message": "กรุณาระบุจำนวนเงิน"}), 400
-
-    db.users.update_one({"_id": voucher["user_id"]}, {"$inc": {"credit": amount}})
-    db.truemoney_vouchers.update_one({"_id": oid}, {"$set": {
-        "status":      "approved",
-        "amount":      amount,
-        "approved_at": datetime.now(timezone.utc),
-    }})
-    push_notification(
-        db, voucher["user_id"],
-        title="เติมเงินสำเร็จ ✅",
-        body=f"ซองอั่งเปา {amount:.2f} ฿ ถูกเพิ่มเข้าบัญชีของคุณเรียบร้อยแล้ว",
-        ntype="success",
-    )
-    return jsonify({"status": True, "message": f"เติมเงิน {amount:.2f} ฿ ให้ {voucher.get('username','')} แล้ว"})
-
-
-@admin_bp.route('/truemoney/<voucher_id>/reject', methods=['POST'])
-@admin_required
-def reject_truemoney(voucher_id):
-    db = get_db()
-    try:
-        oid = ObjectId(voucher_id)
-    except Exception:
-        return jsonify({"status": False, "message": "ID ไม่ถูกต้อง"}), 400
-
-    voucher = db.truemoney_vouchers.find_one({"_id": oid})
-    if not voucher:
-        return jsonify({"status": False, "message": "ไม่พบรายการ"}), 404
-
-    reason = (request.json or {}).get("reason", "")
-    db.truemoney_vouchers.update_one({"_id": oid}, {"$set": {
-        "status":        "rejected",
-        "reject_reason": reason,
-        "rejected_at":   datetime.now(timezone.utc),
-    }})
-    push_notification(
-        db, voucher["user_id"],
-        title="ซองอั่งเปาถูกปฏิเสธ ❌",
-        body=(f"เหตุผล: {reason}" if reason else "กรุณาตรวจสอบซองอั่งเปาและลองใหม่อีกครั้ง"),
-        ntype="error",
-    )
-    return jsonify({"status": True, "message": "ปฏิเสธซองอั่งเป่าแล้ว"})
 
 
 # ─── COUPON MANAGEMENT ───────────────────────────────────────────────────────
@@ -603,6 +443,7 @@ def list_orders():
                 "dt_purchased": purchased_str,
                 "items": [],
                 "total": 0.0,
+                "shipping_address": None,
             }
             order.append(rid)
         line_total = o.get("line_total")
@@ -611,7 +452,10 @@ def list_orders():
         receipts[rid]["items"].append({
             "name": o.get("product_name", ""),
             "quantity": o.get("quantity", 1),
+            "delivery_type": o.get("delivery_type", "digital"),
         })
+        if o.get("shipping_address") and not receipts[rid]["shipping_address"]:
+            receipts[rid]["shipping_address"] = o["shipping_address"]
         receipts[rid]["total"] += float(line_total)
 
     # Attach usernames

@@ -11,7 +11,8 @@ import Register from './pages/Register'
 import Profile from './pages/Profile'
 import Topup from './pages/Topup'
 import Cart from './pages/Cart'
-import { PurchaseLogs, TopupLogs } from './pages/Logs'
+import CheckoutSuccess from './pages/CheckoutSuccess'
+import { PurchaseLogs } from './pages/Logs'
 import Contact from './pages/Contact'
 import Coupons from './pages/Coupons'
 import Admin from './pages/Admin'
@@ -30,12 +31,12 @@ export default function App() {
                 <Route path="/products"          element={<Products />} />
                 <Route path="/product/:cate/:id" element={<ProductDetail />} />
                 <Route path="/cart"              element={<Cart />} />
+                <Route path="/checkout/success"  element={<CheckoutSuccess />} />
                 <Route path="/login"             element={<Login />} />
                 <Route path="/register"          element={<Register />} />
                 <Route path="/profile"           element={<Profile />} />
                 <Route path="/topup"             element={<Topup />} />
                 <Route path="/purchase-logs"     element={<PurchaseLogs />} />
-                <Route path="/topup-logs"        element={<TopupLogs />} />
                 <Route path="/contact"           element={<Contact />} />
                 <Route path="/coupons"           element={<Coupons />} />
                 <Route path="/admin"            element={<Admin />} />

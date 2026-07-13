@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { ArrowRight, Zap, ShieldCheck, Headphones, Tag } from 'lucide-react'
+import { ArrowRight, Zap, ShieldCheck, Headphones, Truck } from 'lucide-react'
 import { api } from '../services/api'
 import ProductCard from '../components/ProductCard'
 
@@ -15,16 +15,16 @@ function niceCount(n) {
 }
 
 const fallbackStats = [
-  { num: '200+', label: 'สินค้าดิจิทัล' },
+  { num: '200+', label: 'สินค้าทั้งหมด' },
   { num: '2,000+', label: 'ลูกค้าที่พอใจ' },
   { num: '4.8★', label: 'คะแนนเฉลี่ย' },
 ]
 
 const features = [
-  { icon: Zap, title: 'รับสินค้าทันที', desc: 'รับสินค้าดิจิทัลทันทีหลังชำระเงิน' },
-  { icon: ShieldCheck, title: 'ปลอดภัย 100%', desc: 'ระบบชำระเงินมาตรฐาน มีประกันทุกออเดอร์' },
+  { icon: Zap, title: 'ดิจิทัลรับทันที', desc: 'เกม ซอฟต์แวร์ บัตรเติมเงิน ส่งคีย์ให้ทันทีหลังชำระเงิน' },
+  { icon: Truck, title: 'จัดส่งทั่วไทย', desc: 'สินค้าแฟชั่นและพัสดุ จัดส่งถึงหน้าบ้าน ติดตามสถานะได้' },
+  { icon: ShieldCheck, title: 'ชำระเงินปลอดภัย', desc: 'รองรับบัตรเครดิต/เดบิต และพร้อมเพย์ ผ่าน Stripe' },
   { icon: Headphones, title: 'ซัพพอร์ต 24/7', desc: 'ทีมงานพร้อมช่วยเหลือตลอดเวลา' },
-  { icon: Tag, title: 'ราคาดีที่สุด', desc: 'รับประกันราคาถูกที่สุดหรือคืนเงิน' },
 ]
 
 const testimonials = [
@@ -57,7 +57,7 @@ export default function Home() {
     api.publicStats().then(({ ok, data }) => {
       if (ok && data.status) {
         setStats([
-          { num: niceCount(data.products),  label: 'สินค้าดิจิทัล' },
+          { num: niceCount(data.products),  label: 'สินค้าทั้งหมด' },
           { num: niceCount(data.customers), label: 'ลูกค้าที่พอใจ' },
           { num: `${data.avg_rating}★`,     label: 'คะแนนเฉลี่ย' },
         ])
@@ -81,7 +81,7 @@ export default function Home() {
             className="flex-1 space-y-7"
           >
             <h1 className="text-5xl lg:text-7xl font-black text-black leading-[1.05] tracking-tight uppercase">
-              ค้นหาสินค้าดิจิทัล<br />
+              ช้อปสินค้า<br />
               <span className="relative inline-block">
                 ที่ใช่สำหรับคุณ
                 <svg className="absolute -bottom-1 left-0 w-full" height="8" viewBox="0 0 300 8" preserveAspectRatio="none">
@@ -91,15 +91,26 @@ export default function Home() {
             </h1>
 
             <p className="text-gray-500 text-base leading-relaxed max-w-md">
-              เลือกซื้อเกม ซอฟต์แวร์ และบัตรเติมเงิน คุณภาพสูงราคาดี จัดส่งทันทีหลังชำระเงิน
+              ครบทั้งสินค้าดิจิทัลและแฟชั่น — เกม ซอฟต์แวร์ บัตรเติมเงิน รับคีย์ทันที
+              ส่วนเสื้อผ้าและพัสดุ จัดส่งถึงหน้าบ้าน
             </p>
+
+            {/* Delivery modes */}
+            <div className="flex flex-wrap gap-2">
+              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-bold text-gray-700">
+                <Zap size={13} className="text-sky-500" /> ดิจิทัล — รับทันที
+              </span>
+              <span className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-200 rounded-full text-xs font-bold text-gray-700">
+                <Truck size={13} className="text-amber-500" /> พัสดุ — ส่งถึงบ้าน
+              </span>
+            </div>
 
             <div className="flex flex-wrap gap-3">
               <Link to="/products" className="flex items-center gap-2 px-8 py-4 bg-black text-white font-bold rounded-full hover:bg-gray-800 transition-colors">
                 ช้อปเลย <ArrowRight size={18} />
               </Link>
-              <Link to="/topup" className="flex items-center gap-2 px-8 py-4 border-2 border-black text-black font-bold rounded-full hover:bg-black hover:text-white transition-colors">
-                เติมเงิน
+              <Link to="/products?cat=fashion" className="flex items-center gap-2 px-8 py-4 border-2 border-black text-black font-bold rounded-full hover:bg-black hover:text-white transition-colors">
+                คอลเลกชันแฟชั่น
               </Link>
             </div>
 
@@ -126,11 +137,11 @@ export default function Home() {
               <div className="w-72 h-80 lg:w-96 lg:h-96 bg-black rounded-3xl flex items-center justify-center overflow-hidden relative">
                 <div className="absolute inset-0 bg-gradient-to-br from-gray-800 to-black" />
                 <div className="relative z-10 text-center p-8">
-                  <div className="text-6xl mb-4">🎮</div>
-                  <p className="text-white font-black text-xl uppercase tracking-wider">Digital Store</p>
-                  <p className="text-gray-400 text-sm mt-2">Premium Products</p>
+                  <div className="text-6xl mb-4">🛍️</div>
+                  <p className="text-white font-black text-xl uppercase tracking-wider">Shop.Now</p>
+                  <p className="text-gray-400 text-sm mt-2">Digital & Lifestyle</p>
                   <div className="mt-6 flex justify-center gap-2">
-                    {['🎯', '💻', '📱', '🔑'].map(e => (
+                    {['🎮', '💻', '👕', '🔑'].map(e => (
                       <div key={e} className="w-10 h-10 bg-white/10 rounded-xl flex items-center justify-center text-lg">{e}</div>
                     ))}
                   </div>
@@ -195,19 +206,27 @@ export default function Home() {
       <section className="py-16 px-6 bg-[#F2F0F1]">
         <div className="max-w-7xl mx-auto">
           <h2 className="text-4xl font-black text-black uppercase tracking-tight mb-8">หมวดหมู่สินค้า</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { label: 'เกม', emoji: '🎮', value: 'game', bg: 'bg-white' },
-              { label: 'ซอฟต์แวร์', emoji: '💻', value: 'software', bg: 'bg-black text-white' },
-              { label: 'เติมเงิน', emoji: '💳', value: 'topup', bg: 'bg-white' },
+              { label: 'เกม', emoji: '🎮', value: 'game', dark: false, mode: 'digital' },
+              { label: 'ซอฟต์แวร์', emoji: '💻', value: 'software', dark: true, mode: 'digital' },
+              { label: 'เติมเงิน', emoji: '💳', value: 'topup', dark: false, mode: 'digital' },
+              { label: 'แฟชั่น', emoji: '👕', value: 'fashion', dark: false, mode: 'physical' },
             ].map(c => (
               <Link
                 key={c.value}
                 to={`/products?cat=${c.value}`}
-                className={`group ${c.bg} rounded-2xl p-8 flex flex-col gap-4 hover:scale-[1.02] transition-transform duration-300 border border-gray-200`}
+                className={`group ${c.dark ? 'bg-black' : 'bg-white'} rounded-2xl p-8 flex flex-col gap-4 hover:scale-[1.02] transition-transform duration-300 border border-gray-200`}
               >
                 <span className="text-4xl">{c.emoji}</span>
-                <span className={`font-black text-xl uppercase tracking-tight ${c.bg.includes('black') ? 'text-white' : 'text-black'}`}>{c.label}</span>
+                <div className="flex flex-col gap-2">
+                  <span className={`font-black text-xl uppercase tracking-tight ${c.dark ? 'text-white' : 'text-black'}`}>{c.label}</span>
+                  <span className={`flex items-center gap-1 w-fit text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    c.mode === 'physical' ? 'bg-amber-100 text-amber-700' : 'bg-sky-100 text-sky-700'
+                  }`}>
+                    {c.mode === 'physical' ? <><Truck size={10} /> จัดส่งพัสดุ</> : <><Zap size={10} /> ส่งออนไลน์</>}
+                  </span>
+                </div>
               </Link>
             ))}
           </div>
