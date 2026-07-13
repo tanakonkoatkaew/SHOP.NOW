@@ -10,6 +10,7 @@ const CATS = [
   { label: 'เกม',       value: 'game' },
   { label: 'ซอฟต์แวร์', value: 'software' },
   { label: 'เติมเงิน',  value: 'topup' },
+  { label: 'แฟชั่น',    value: 'fashion' },
 ]
 
 const SORT_OPTIONS = [

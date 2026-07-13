@@ -14,7 +14,7 @@ import Spinner from '../components/Spinner'
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-const CATES = ['game', 'software', 'topup', 'other']
+const CATES = ['game', 'software', 'topup', 'fashion', 'other']
 
 const STATUS_BADGE = {
   pending: { label: 'รอสลิป', cls: 'bg-gray-100 text-gray-600' },
