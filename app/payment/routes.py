@@ -13,6 +13,22 @@ payment_bp = Blueprint('payment', __name__)
 SECRET_KEY = os.getenv("FLASK_SECRET_KEY", "your-secret-key")
 
 
+def _sget(obj, key, default=None):
+    """Read a key from a plain dict OR a StripeObject.
+
+    stripe-python's StripeObject supports [] indexing but (in some versions)
+    not .get(), so a shared accessor keeps webhook/confirm code working with
+    both verified events (StripeObject) and unverified JSON (dict).
+    """
+    if obj is None:
+        return default
+    try:
+        val = obj[key]
+        return default if val is None else val
+    except (KeyError, IndexError, TypeError):
+        return getattr(obj, key, default)
+
+
 # local auth decorator (payment module uses g.user)
 def auth_required(f):
     from functools import wraps
@@ -118,17 +134,17 @@ def confirm_payment():
     except Exception as e:
         return jsonify({"status": False, "msg": f"ตรวจสอบการชำระเงินไม่สำเร็จ: {str(e)}"}), 502
 
-    if session.get("payment_status") != "paid":
+    if _sget(session, "payment_status") != "paid":
         return jsonify({"status": False, "msg": "ยังไม่ได้รับชำระเงิน"}), 402
 
-    pending_id = (session.get("metadata") or {}).get("pending_order_id") or session.get("client_reference_id")
+    pending_id = _sget(_sget(session, "metadata"), "pending_order_id") or _sget(session, "client_reference_id")
     pending = db.pending_orders.find_one({"_id": pending_id})
     if not pending:
         return jsonify({"status": False, "msg": "ไม่พบคำสั่งซื้อ"}), 404
     if str(pending.get("user_id")) != str(g.user):
         return jsonify({"status": False, "msg": "ไม่มีสิทธิ์เข้าถึงคำสั่งซื้อนี้"}), 403
 
-    ok, res, code = finalize_order(db, pending, payment_ref=session.get("payment_intent"))
+    ok, res, code = finalize_order(db, pending, payment_ref=_sget(session, "payment_intent"))
     return jsonify(res), code
 
 
@@ -150,14 +166,15 @@ def stripe_webhook():
     except Exception as e:
         return jsonify({"error": f"Invalid webhook: {str(e)}"}), 400
 
-    etype = (event.get("type") if isinstance(event, dict) else getattr(event, "type", None))
+    etype = _sget(event, "type")
     if etype == "checkout.session.completed":
-        session = (event["data"]["object"] if isinstance(event, dict) else event.data.object)
-        if session.get("payment_status") == "paid":
-            pending_id = (session.get("metadata") or {}).get("pending_order_id") or session.get("client_reference_id")
+        data = _sget(event, "data")
+        session = _sget(data, "object")
+        if _sget(session, "payment_status") == "paid":
+            pending_id = _sget(_sget(session, "metadata"), "pending_order_id") or _sget(session, "client_reference_id")
             pending = db.pending_orders.find_one({"_id": pending_id})
             if pending:
-                finalize_order(db, pending, payment_ref=session.get("payment_intent"))
+                finalize_order(db, pending, payment_ref=_sget(session, "payment_intent"))
 
     return jsonify({"received": True}), 200
 
