@@ -3,6 +3,7 @@ from bson import ObjectId
 from flask import Blueprint, request, jsonify, g
 from app.extensions import get_db
 from app.middlewares import auth_required, admin_required
+from app.services import gemini_service
 
 chat_bp = Blueprint('chat', __name__)
 admin_chat_bp = Blueprint('admin_chat', __name__)
@@ -14,17 +15,17 @@ FAQ_ITEMS = [
     {
         "id": "order",
         "q": "วิธีสั่งซื้อสินค้า",
-        "a": "1) เลือกสินค้าที่ต้องการ\n2) กดปุ่ม \"ซื้อเลย\" ในหน้ารายละเอียดสินค้า\n3) ระบบจะหักเครดิตจากบัญชีของคุณอัตโนมัติ\n4) ดูประวัติการซื้อได้ที่เมนู \"ประวัติการซื้อ\""
+        "a": "1) เลือกสินค้าแล้วกด \"ซื้อเลย\" หรือเพิ่มลงตะกร้า\n2) ที่หน้าชำระเงิน ใส่คูปอง / ใช้พอยท์ / ใช้ Store Credit เป็นส่วนลดได้\n3) ยอดที่เหลือชำระผ่านบัตรเครดิต/เดบิตอย่างปลอดภัยด้วย Stripe (ถ้าพอยท์+เครดิตครอบคลุมยอดทั้งหมด ไม่ต้องใช้บัตรเลย)\n4) สินค้าดิจิทัลรับคีย์ทันทีที่เมนู \"ประวัติการซื้อ\" และทางอีเมล ส่วนสินค้าจริงจัดส่งตามที่อยู่ที่ระบุ"
     },
     {
         "id": "topup",
-        "q": "วิธีเติมเงิน / เติมเครดิต",
-        "a": "เข้าไปที่เมนู \"เติมเงิน\" สามารถเลือกได้ 2 ช่องทาง:\n• สแกน QR PromptPay แล้วอัพโหลดสลิป (รอแอดมินตรวจสอบ)\n• เติมผ่านซองอั่งเป่า TrueMoney Wallet\n\nเครดิตจะเข้าทันทีหลังตรวจสอบสำเร็จ"
+        "q": "Store Credit คืออะไร / เติมยังไง",
+        "a": "Store Credit คือเครดิตในบัญชีของคุณ ใช้เป็นส่วนลดตอนชำระเงินได้ (หักก่อนจ่ายบัตร)\n\nวิธีเติม: ไปที่เมนู \"Store Credit\" แล้วกรอกโค้ด/บัตรของขวัญ เครดิตจะเข้าบัญชีทันที\n\nไม่จำเป็นต้องมีเครดิตก็ซื้อของได้ — ชำระผ่านบัตร (Stripe) ได้โดยตรง"
     },
     {
         "id": "slip",
-        "q": "อัพโหลดสลิปแล้วเครดิตยังไม่เข้า",
-        "a": "ปกติแอดมินจะตรวจสอบสลิปภายใน 5-30 นาที หากเกินกว่านี้สามารถพิมพ์ \"คุยกับแอดมิน\" เพื่อแจ้งได้เลย โดยเตรียม Ref code ของรายการไว้ด้วยครับ"
+        "q": "จ่ายเงินแล้วยังไม่ได้รับสินค้า",
+        "a": "สินค้าดิจิทัลจะได้รับคีย์ทันทีที่เมนู \"ประวัติการซื้อ\" และทางอีเมลหลังชำระเงินสำเร็จ หากยังไม่ได้รับภายใน 5-10 นาที ให้พิมพ์ \"คุยกับแอดมิน\" พร้อมแจ้งหมายเลขใบเสร็จ (Receipt ID) ได้เลยครับ\n\nส่วนสินค้าจริง ตรวจสอบสถานะจัดส่งได้ที่ \"ประวัติการซื้อ\" เช่นกัน"
     },
     {
         "id": "warranty",
@@ -100,10 +101,13 @@ def _get_or_create_session(db, user_id):
 
 
 def _serialize_message(m):
+    # legacy messages have no channel: admin-sent → admin, everything else → ai
+    channel = m.get("channel") or ("admin" if m.get("sender") == "admin" else "ai")
     return {
         "id":         str(m["_id"]),
         "sender":     m.get("sender", "user"),
         "text":       m.get("text", ""),
+        "channel":    channel,
         "created_at": m["created_at"].isoformat() if m.get("created_at") else "",
     }
 
@@ -147,30 +151,56 @@ def send_message():
     sess = _get_or_create_session(db, g.user_id)
     now = datetime.now(timezone.utc)
 
+    # "ai" (default) → assistant answers; "admin" → direct line, no bot
+    channel = "admin" if data.get("channel") == "admin" else "ai"
+
+    # Recent AI-channel history for the assistant (fetched before inserting)
+    history = list(
+        db.chat_messages.find({
+            "session_id": sess["_id"],
+            "$or": [{"channel": "ai"}, {"channel": {"$exists": False}}],
+        }).sort("created_at", -1).limit(gemini_service.HISTORY_LIMIT)
+    )[::-1]
+
     user_msg = {
         "session_id":   sess["_id"],
         "user_id":      sess["user_id"],
         "sender":       "user",
         "text":         text,
+        "channel":      channel,
         "created_at":   now,
         "read_by_admin": False,
         "read_by_user":  True,
     }
     db.chat_messages.insert_one(user_msg)
-    db.chat_sessions.update_one(
-        {"_id": sess["_id"]},
-        {
-            "$set": {
-                "last_message": text[:120],
-                "last_sender":  "user",
-                "updated_at":   now,
-            },
-            "$inc": {"unread_admin": 1},
-        }
-    )
 
-    # Try bot auto-reply for common questions
-    bot_reply = _bot_autoreply(text) if not data.get("skip_bot") else None
+    is_handoff = any(k in text for k in ("คุยกับแอดมิน", "ติดต่อแอดมิน", "ขอแอดมิน"))
+    session_update = {
+        "$set": {
+            "last_message": text[:120],
+            "last_sender":  "user",
+            "updated_at":   now,
+        },
+    }
+    # Only direct-admin messages (or explicit hand-off requests) ping the admin
+    if channel == "admin" or is_handoff:
+        session_update["$inc"] = {"unread_admin": 1}
+    db.chat_sessions.update_one({"_id": sess["_id"]}, session_update)
+
+    # Bot reply pipeline (AI channel only): hand-off > Gemini agent > keyword bot
+    bot_reply = None
+    if channel == "ai" and not data.get("skip_bot"):
+        if is_handoff:
+            bot_reply = (
+                "รับทราบครับ ✅ ส่งเรื่องถึงแอดมินให้แล้ว "
+                "ทีมงานจะเข้ามาตอบในแท็บ \"แอดมิน\" โดยเร็วที่สุด "
+                "ระหว่างนี้สามารถพิมพ์รายละเอียดเพิ่มเติม เช่น หมายเลขใบเสร็จหรือชื่อสินค้า ไว้ได้เลยครับ"
+            )
+        else:
+            bot_reply = gemini_service.generate_reply(db, g.user_id, history, text)
+            if not bot_reply:
+                bot_reply = _bot_autoreply(text)
+
     bot_msg_doc = None
     if bot_reply:
         bot_msg_doc = {
@@ -178,11 +208,17 @@ def send_message():
             "user_id":      sess["user_id"],
             "sender":       "bot",
             "text":         bot_reply,
+            "channel":      "ai",
             "created_at":   datetime.now(timezone.utc),
             "read_by_admin": True,
             "read_by_user":  True,
         }
         db.chat_messages.insert_one(bot_msg_doc)
+        db.chat_sessions.update_one(
+            {"_id": sess["_id"]},
+            {"$set": {"last_message": bot_reply[:120], "last_sender": "bot",
+                      "updated_at": datetime.now(timezone.utc)}}
+        )
 
     return jsonify({
         "status": True,
@@ -205,13 +241,13 @@ def faq_answer():
     now = datetime.now(timezone.utc)
     q_msg = {
         "session_id": sess["_id"], "user_id": sess["user_id"],
-        "sender": "user", "text": item["q"], "created_at": now,
+        "sender": "user", "text": item["q"], "channel": "ai", "created_at": now,
         "read_by_admin": True, "read_by_user": True,
     }
     db.chat_messages.insert_one(q_msg)
     a_msg = {
         "session_id": sess["_id"], "user_id": sess["user_id"],
-        "sender": "bot", "text": item["a"],
+        "sender": "bot", "text": item["a"], "channel": "ai",
         "created_at": datetime.now(timezone.utc),
         "read_by_admin": True, "read_by_user": True,
     }
@@ -301,6 +337,7 @@ def admin_reply(session_id):
         "user_id":      sess["user_id"],
         "sender":       "admin",
         "text":         text,
+        "channel":      "admin",
         "created_at":   now,
         "read_by_admin": True,
         "read_by_user":  False,
