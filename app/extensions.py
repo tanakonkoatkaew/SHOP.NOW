@@ -11,7 +11,24 @@ def init_db():
 
     client = MongoClient(MONGO_URI)
     db = client[MONGO_DB_NAME]
+    ensure_indexes(db)
     print("MongoDB connected successfully!")
+
+
+def ensure_indexes(database):
+    """Idempotent index creation — safe to run on every boot."""
+    try:
+        database.reviews.create_index(
+            [("product_id", 1), ("user_id", 1)], unique=True, name="uniq_product_user"
+        )
+        database.reviews.create_index(
+            [("product_id", 1), ("created_at", -1)], name="product_created"
+        )
+        database.orders.create_index(
+            [("user_id", 1), ("product_id", 1)], name="user_product"
+        )
+    except Exception as e:
+        print(f"[extensions] ensure_indexes failed: {e}")
 
 def get_db():
     global db

@@ -5,6 +5,7 @@ import { ShieldCheck, Minus, Plus, ArrowLeft, ShoppingCart, Zap, Star, Check, Tr
 import { api } from '../services/api'
 import { useCart } from '../hooks/useCart'
 import Spinner from '../components/Spinner'
+import ReviewSection from '../components/ReviewSection'
 
 const POINTS_RATE = 0.05  // mirror backend POINTS_EARN_RATE
 
@@ -207,6 +208,8 @@ export default function ProductDetail() {
           </div>
         </motion.div>
       </div>
+
+      <ReviewSection productId={product.id} />
     </div>
   )
 }

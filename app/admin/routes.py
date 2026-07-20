@@ -1,5 +1,7 @@
 import os
 import uuid
+import string
+import secrets
 from datetime import datetime, timezone, timedelta
 from flask import Blueprint, request, jsonify, g
 from bson import ObjectId
@@ -512,3 +514,192 @@ def update_order_status(receipt_id):
             print("[admin] status email failed:", e)
 
     return jsonify({"status": True, "message": f"อัปเดตสถานะเป็น \"{label}\" แล้ว"})
+
+
+# ─── STORE CREDIT: gift codes & manual adjustment ────────────────────────────
+
+_CODE_ALPHABET = string.ascii_uppercase + string.digits
+
+
+def _gen_topup_code():
+    part = lambda: ''.join(secrets.choice(_CODE_ALPHABET) for _ in range(4))
+    return f"SN-{part()}-{part()}"
+
+
+@admin_bp.route('/topup-codes', methods=['GET'])
+@admin_required
+def list_topup_codes():
+    db = get_db()
+    docs = list(db.topup_codes.find().sort([("created_at", -1), ("_id", -1)]).limit(500))
+
+    # resolve used_by user ids -> usernames
+    usernames = {}
+    for d in docs:
+        uid = d.get("used_by")
+        if uid and uid not in usernames:
+            try:
+                u = db.users.find_one({"_id": ObjectId(uid)})
+                usernames[uid] = u.get("username", "—") if u else "—"
+            except Exception:
+                usernames[uid] = "—"
+
+    results = []
+    for d in docs:
+        results.append({
+            "id":         str(d["_id"]),
+            "code":       d.get("code", ""),
+            "amount":     float(d.get("amount", 0)),
+            "used":       bool(d.get("used", False)),
+            "used_by":    usernames.get(d.get("used_by"), ""),
+            "created_at": d["created_at"].isoformat() if d.get("created_at") else "",
+        })
+    return jsonify({"status": True, "results": results})
+
+
+@admin_bp.route('/topup-codes', methods=['POST'])
+@admin_required
+def create_topup_codes():
+    db = get_db()
+    data = request.json or {}
+
+    try:
+        amount = float(data.get("amount", 0))
+    except (TypeError, ValueError):
+        amount = 0
+    if amount <= 0:
+        return jsonify({"status": False, "message": "จำนวนเงินต้องมากกว่า 0"}), 400
+    if amount > 100000:
+        return jsonify({"status": False, "message": "จำนวนเงินสูงสุด 100,000 ฿ ต่อโค้ด"}), 400
+
+    try:
+        count = int(data.get("count", 1))
+    except (TypeError, ValueError):
+        count = 1
+    count = max(1, min(count, 50))
+
+    custom = (data.get("code") or "").strip().upper()
+    if custom:
+        if db.topup_codes.find_one({"code": custom}):
+            return jsonify({"status": False, "message": "โค้ดนี้มีอยู่แล้ว"}), 400
+        codes = [custom]
+    else:
+        codes = []
+        while len(codes) < count:
+            c = _gen_topup_code()
+            if c not in codes and not db.topup_codes.find_one({"code": c}):
+                codes.append(c)
+
+    now = datetime.now(timezone.utc)
+    for c in codes:
+        db.topup_codes.insert_one({
+            "code":       c,
+            "amount":     round(amount, 2),
+            "used":       False,
+            "created_at": now,
+            "created_by": g.user_id,
+        })
+    return jsonify({"status": True, "codes": codes})
+
+
+@admin_bp.route('/topup-codes/<code_id>', methods=['DELETE'])
+@admin_required
+def delete_topup_code(code_id):
+    db = get_db()
+    try:
+        oid = ObjectId(code_id)
+    except Exception:
+        return jsonify({"status": False, "message": "ID ไม่ถูกต้อง"}), 400
+
+    code = db.topup_codes.find_one({"_id": oid})
+    if not code:
+        return jsonify({"status": False, "message": "ไม่พบโค้ด"}), 404
+    if code.get("used"):
+        return jsonify({"status": False, "message": "โค้ดนี้ถูกใช้ไปแล้ว ลบไม่ได้"}), 400
+
+    db.topup_codes.delete_one({"_id": oid})
+    return jsonify({"status": True, "message": "ลบโค้ดแล้ว"})
+
+
+@admin_bp.route('/users/<user_id>/credit', methods=['POST'])
+@admin_required
+def adjust_user_credit(user_id):
+    db = get_db()
+    data = request.json or {}
+
+    try:
+        amount = float(data.get("amount", 0))
+    except (TypeError, ValueError):
+        amount = 0
+    if amount == 0:
+        return jsonify({"status": False, "message": "จำนวนต้องไม่เป็น 0"}), 400
+    if abs(amount) > 100000:
+        return jsonify({"status": False, "message": "ปรับได้ครั้งละไม่เกิน 100,000 ฿"}), 400
+    amount = round(amount, 2)
+    note = (data.get("note") or "").strip()
+
+    try:
+        oid = ObjectId(user_id)
+    except Exception:
+        return jsonify({"status": False, "message": "ID ไม่ถูกต้อง"}), 400
+
+    user = db.users.find_one({"_id": oid})
+    if not user:
+        return jsonify({"status": False, "message": "ไม่พบผู้ใช้"}), 404
+
+    if amount < 0:
+        # conditional update so the balance can never go negative
+        res = db.users.update_one(
+            {"_id": oid, "credit": {"$gte": -amount}},
+            {"$inc": {"credit": amount}},
+        )
+        if res.modified_count == 0:
+            return jsonify({
+                "status": False,
+                "message": f"เครดิตไม่พอหัก (คงเหลือ {float(user.get('credit', 0)):.2f} ฿)",
+            }), 400
+    else:
+        db.users.update_one({"_id": oid}, {"$inc": {"credit": amount}})
+
+    # audit trail
+    db.credit_adjustments.insert_one({
+        "user_id":    oid,
+        "amount":     amount,
+        "note":       note,
+        "admin_id":   g.user_id,
+        "created_at": datetime.now(timezone.utc),
+    })
+
+    if amount > 0:
+        push_notification(
+            db, user_id,
+            title="ได้รับ Store Credit 💰",
+            body=f"แอดมินเพิ่มเครดิตให้ {amount:,.2f} ฿" + (f" — {note}" if note else ""),
+            ntype="success",
+        )
+    else:
+        push_notification(
+            db, user_id,
+            title="Store Credit ถูกปรับ",
+            body=f"แอดมินหักเครดิต {abs(amount):,.2f} ฿" + (f" — {note}" if note else ""),
+            ntype="info",
+        )
+
+    updated = db.users.find_one({"_id": oid})
+    return jsonify({"status": True, "new_credit": float(updated.get("credit", 0))})
+
+
+# ─── REVIEW MODERATION ───────────────────────────────────────────────────────
+
+@admin_bp.route('/reviews/<review_id>', methods=['DELETE'])
+@admin_required
+def delete_review(review_id):
+    db = get_db()
+    try:
+        oid = ObjectId(review_id)
+    except Exception:
+        return jsonify({"status": False, "message": "ID ไม่ถูกต้อง"}), 400
+
+    res = db.reviews.delete_one({"_id": oid})
+    if res.deleted_count == 0:
+        return jsonify({"status": False, "message": "ไม่พบรีวิว"}), 404
+    return jsonify({"status": True, "message": "ลบรีวิวแล้ว"})

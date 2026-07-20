@@ -4,9 +4,10 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, FileImage, Package, Users, Gift,
   CheckCircle, XCircle, Pencil, Trash2, Plus,
-  X, AlertTriangle, RefreshCw, Upload,
+  X, RefreshCw, Upload,
   MessageCircle, Send, Bot, ShieldCheck,
   Truck, Star, ShoppingBag, Clock, Box, Check, Zap, MapPin,
+  Wallet, Copy,
 } from 'lucide-react'
 import { api } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
@@ -307,6 +308,212 @@ function CouponManagement() {
                           className="flex items-center gap-1 px-3 py-1.5 border-2 border-red-200 text-red-500 text-xs font-bold rounded-full hover:border-red-400 transition-colors">
                           <Trash2 size={12} /> ลบ
                         </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── TAB: STORE CREDIT ───────────────────────────────────────────────────────
+
+function StoreCreditManagement() {
+  const [codes, setCodes]     = useState([])
+  const [users, setUsers]     = useState([])
+  const [loading, setLoading] = useState(true)
+  const [toast, setToast]     = useState('')
+  const [codeForm, setCodeForm] = useState({ amount: '', count: '1', code: '' })
+  const [adjForm, setAdjForm]   = useState({ user_id: '', mode: 'add', amount: '', note: '' })
+  const [busy, setBusy]       = useState(false)
+
+  const load = useCallback(() => {
+    setLoading(true)
+    Promise.all([api.admin.topupCodes(), api.admin.users()]).then(([c, u]) => {
+      setCodes(c.data?.results || [])
+      setUsers(u.data?.results || [])
+      setLoading(false)
+    })
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 4000) }
+
+  const createCodes = async (e) => {
+    e.preventDefault()
+    if (busy) return
+    setBusy(true)
+    const { ok, data } = await api.admin.createTopupCodes({
+      amount: parseFloat(codeForm.amount),
+      count: parseInt(codeForm.count || '1', 10),
+      code: codeForm.code.trim(),
+    })
+    setBusy(false)
+    if (ok && data.status) {
+      showToast(`สร้างโค้ดสำเร็จ ${data.codes.length} รายการ`)
+      setCodeForm({ amount: '', count: '1', code: '' })
+      load()
+    } else showToast(data.message || 'เกิดข้อผิดพลาด')
+  }
+
+  const removeCode = async (id) => {
+    if (!confirm('ยืนยันลบโค้ดนี้?')) return
+    const { ok, data } = await api.admin.deleteTopupCode(id)
+    if (ok && data.status) { showToast('ลบโค้ดแล้ว'); load() }
+    else showToast(data.message || 'เกิดข้อผิดพลาด')
+  }
+
+  const copyCode = (code) => {
+    navigator.clipboard?.writeText(code)
+    showToast(`คัดลอก ${code} แล้ว`)
+  }
+
+  const adjustCredit = async (e) => {
+    e.preventDefault()
+    if (busy || !adjForm.user_id) return
+    const raw = parseFloat(adjForm.amount)
+    if (!raw || raw <= 0) { showToast('กรอกจำนวนเงินให้ถูกต้อง'); return }
+    const amount = adjForm.mode === 'deduct' ? -raw : raw
+    const target = users.find(u => u.id === adjForm.user_id)
+    if (!confirm(`ยืนยัน${adjForm.mode === 'deduct' ? 'หัก' : 'เพิ่ม'}เครดิต ${raw.toFixed(2)} ฿ ${adjForm.mode === 'deduct' ? 'จาก' : 'ให้'} "${target?.username}"?`)) return
+    setBusy(true)
+    const { ok, data } = await api.admin.adjustCredit(adjForm.user_id, { amount, note: adjForm.note })
+    setBusy(false)
+    if (ok && data.status) {
+      showToast(`สำเร็จ — เครดิตใหม่ของ ${target?.username}: ${data.new_credit.toFixed(2)} ฿`)
+      setAdjForm({ user_id: '', mode: 'add', amount: '', note: '' })
+      load()
+    } else showToast(data.message || 'เกิดข้อผิดพลาด')
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-black uppercase tracking-tight">Store Credit</h2>
+        <button onClick={load} className="p-2 hover:bg-gray-100 rounded-full transition-colors"><RefreshCw size={14} /></button>
+      </div>
+
+      {toast && <div className="px-4 py-3 bg-black text-white text-sm font-semibold rounded-xl">{toast}</div>}
+
+      {/* Adjust user credit */}
+      <div className="bg-white border-2 border-gray-100 rounded-2xl p-5">
+        <h3 className="text-sm font-black uppercase tracking-wide mb-3">ปรับเครดิตผู้ใช้โดยตรง</h3>
+        <form onSubmit={adjustCredit} className="flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[180px]">
+            <label className="block text-xs font-bold text-gray-500 mb-1">ผู้ใช้</label>
+            <select value={adjForm.user_id} onChange={e => setAdjForm(f => ({ ...f, user_id: e.target.value }))}
+              required className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-black outline-none bg-white">
+              <option value="">— เลือกผู้ใช้ —</option>
+              {users.map(u => (
+                <option key={u.id} value={u.id}>{u.username} ({u.credit.toFixed(2)} ฿)</option>
+              ))}
+            </select>
+          </div>
+          <div className="w-28">
+            <label className="block text-xs font-bold text-gray-500 mb-1">ประเภท</label>
+            <select value={adjForm.mode} onChange={e => setAdjForm(f => ({ ...f, mode: e.target.value }))}
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-black outline-none bg-white">
+              <option value="add">เพิ่ม (+)</option>
+              <option value="deduct">หัก (−)</option>
+            </select>
+          </div>
+          <div className="w-32">
+            <label className="block text-xs font-bold text-gray-500 mb-1">จำนวน (฿)</label>
+            <input type="number" min="0.01" step="0.01" value={adjForm.amount}
+              onChange={e => setAdjForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder="100" required
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-black outline-none" />
+          </div>
+          <div className="flex-1 min-w-[160px]">
+            <label className="block text-xs font-bold text-gray-500 mb-1">หมายเหตุ (ไม่บังคับ)</label>
+            <input value={adjForm.note} onChange={e => setAdjForm(f => ({ ...f, note: e.target.value }))}
+              placeholder="เช่น ชดเชยสินค้ามีปัญหา"
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-black outline-none" />
+          </div>
+          <button type="submit" disabled={busy}
+            className="flex items-center gap-1.5 px-5 py-2 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-800 disabled:opacity-40 transition-colors">
+            <Wallet size={15} /> ปรับเครดิต
+          </button>
+        </form>
+        <p className="text-xs text-gray-400 mt-2">ผู้ใช้จะได้รับการแจ้งเตือนอัตโนมัติ และทุกการปรับถูกบันทึกไว้ตรวจสอบย้อนหลังได้</p>
+      </div>
+
+      {/* Create gift codes */}
+      <div className="bg-white border-2 border-gray-100 rounded-2xl p-5">
+        <h3 className="text-sm font-black uppercase tracking-wide mb-3">สร้างโค้ดเติมเครดิต (บัตรของขวัญ)</h3>
+        <form onSubmit={createCodes} className="flex flex-wrap items-end gap-3">
+          <div className="w-36">
+            <label className="block text-xs font-bold text-gray-500 mb-1">มูลค่า (฿)</label>
+            <input type="number" min="1" step="0.01" value={codeForm.amount}
+              onChange={e => setCodeForm(f => ({ ...f, amount: e.target.value }))}
+              placeholder="500" required
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-black outline-none" />
+          </div>
+          <div className="w-28">
+            <label className="block text-xs font-bold text-gray-500 mb-1">จำนวนโค้ด</label>
+            <input type="number" min="1" max="50" value={codeForm.count}
+              onChange={e => setCodeForm(f => ({ ...f, count: e.target.value }))}
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm focus:border-black outline-none" />
+          </div>
+          <div className="flex-1 min-w-[170px]">
+            <label className="block text-xs font-bold text-gray-500 mb-1">โค้ดกำหนดเอง (ไม่บังคับ)</label>
+            <input value={codeForm.code} onChange={e => setCodeForm(f => ({ ...f, code: e.target.value }))}
+              placeholder="ปล่อยว่าง = สุ่มให้"
+              className="w-full px-3 py-2 border-2 border-gray-200 rounded-xl text-sm uppercase focus:border-black outline-none" />
+          </div>
+          <button type="submit" disabled={busy}
+            className="flex items-center gap-1.5 px-5 py-2 bg-black text-white text-sm font-bold rounded-xl hover:bg-gray-800 disabled:opacity-40 transition-colors">
+            <Plus size={15} /> สร้างโค้ด
+          </button>
+        </form>
+      </div>
+
+      {/* Codes table */}
+      <div className="bg-white border-2 border-gray-100 rounded-2xl overflow-hidden">
+        {loading ? <div className="py-16"><Spinner /></div> : codes.length === 0 ? (
+          <div className="text-center py-20 text-gray-400 font-medium">ยังไม่มีโค้ดเติมเครดิต</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-[#F2F0F1]">
+                <tr>
+                  {['โค้ด', 'มูลค่า', 'สถานะ', 'ใช้โดย', 'สร้างเมื่อ', 'จัดการ'].map(h => (
+                    <th key={h} className="px-4 py-3 text-xs font-black uppercase tracking-wide text-gray-600">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {codes.map(c => (
+                  <tr key={c.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-4 py-3 text-sm font-mono font-bold">{c.code}</td>
+                    <td className="px-4 py-3 text-sm font-bold">{c.amount.toFixed(2)} ฿</td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${c.used ? 'bg-gray-200 text-gray-500' : 'bg-green-100 text-green-700'}`}>
+                        {c.used ? 'ใช้แล้ว' : 'พร้อมใช้'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500">{c.used_by || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500">
+                      {c.created_at ? new Date(c.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' }) : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button onClick={() => copyCode(c.code)}
+                          className="flex items-center gap-1 px-3 py-1.5 border-2 border-gray-200 text-gray-600 text-xs font-bold rounded-full hover:border-black hover:text-black transition-colors">
+                          <Copy size={12} /> คัดลอก
+                        </button>
+                        {!c.used && (
+                          <button onClick={() => removeCode(c.id)}
+                            className="flex items-center gap-1 px-3 py-1.5 border-2 border-red-200 text-red-500 text-xs font-bold rounded-full hover:border-red-400 transition-colors">
+                            <Trash2 size={12} /> ลบ
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -687,7 +894,7 @@ function UserManagement() {
 
   const showToast = (msg) => { setToast(msg); setTimeout(() => setToast(''), 3000) }
 
-  const openEdit = (u) => { setEditing(u); setEditForm({ credit: u.credit, reward: u.reward, is_admin: u.is_admin }) }
+  const openEdit = (u) => { setEditing(u); setEditForm({ credit: u.credit }) }
 
   const handleSave = async () => {
     setSaving(true)
@@ -778,35 +985,23 @@ function UserManagement() {
 
       <AnimatePresence>
         {editing && (
-          <Modal open title={`แก้ไข: ${editing.username}`} onClose={() => setEditing(null)}>
+          <Modal open title={`Store Credit: ${editing.username}`} onClose={() => setEditing(null)}>
             <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-black uppercase mb-1">Credit (฿)</label>
-                <input type="number" value={editForm.credit}
-                  onChange={e => setEditForm(f => ({ ...f, credit: parseFloat(e.target.value) || 0 }))}
-                  className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-black text-sm transition-colors" />
+              <div className="flex items-center justify-between p-3 bg-[#F2F0F1] rounded-xl">
+                <span className="flex items-center gap-1.5 text-xs font-bold text-gray-500 uppercase"><Wallet size={13} /> ยอดปัจจุบัน</span>
+                <span className="text-sm font-black">{editing.credit?.toFixed(2)} ฿</span>
               </div>
               <div>
-                <label className="block text-xs font-black uppercase mb-1">Reward Points</label>
-                <input type="number" value={editForm.reward}
-                  onChange={e => setEditForm(f => ({ ...f, reward: parseFloat(e.target.value) || 0 }))}
+                <label className="block text-xs font-black uppercase mb-1">Store Credit ใหม่ (฿)</label>
+                <input type="number" min="0" step="0.01" value={editForm.credit}
+                  onChange={e => setEditForm(f => ({ ...f, credit: Math.max(0, parseFloat(e.target.value) || 0) }))}
                   className="w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-black text-sm transition-colors" />
+                {editForm.credit !== editing.credit && (
+                  <p className={`text-xs font-bold mt-1.5 ${editForm.credit > editing.credit ? 'text-green-600' : 'text-red-500'}`}>
+                    {editForm.credit > editing.credit ? '+' : '−'}{Math.abs(editForm.credit - editing.credit).toFixed(2)} ฿ จากยอดเดิม
+                  </p>
+                )}
               </div>
-              <label className="flex items-center gap-3 p-3 border-2 border-gray-200 rounded-xl cursor-pointer hover:border-black transition-colors">
-                <input type="checkbox" checked={editForm.is_admin}
-                  onChange={e => setEditForm(f => ({ ...f, is_admin: e.target.checked }))}
-                  className="w-4 h-4 accent-black" />
-                <div>
-                  <p className="text-sm font-bold">สิทธิ์ Admin</p>
-                  <p className="text-xs text-gray-400">เข้าถึง Admin Panel ได้</p>
-                </div>
-              </label>
-              {editForm.is_admin && (
-                <div className="flex items-start gap-2 p-3 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-yellow-700">
-                  <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                  <span>Admin มีสิทธิ์เต็มในการจัดการระบบ กรุณาตรวจสอบให้แน่ใจ</span>
-                </div>
-              )}
               <div className="flex gap-2 justify-end pt-2">
                 <button onClick={() => setEditing(null)} className="px-5 py-2 border-2 border-gray-200 rounded-full text-sm font-semibold hover:border-black transition-colors">ยกเลิก</button>
                 <button onClick={handleSave} disabled={saving}
@@ -1202,6 +1397,7 @@ const TABS = [
   { id: 'orders', label: 'คำสั่งซื้อ', icon: ShoppingBag },
   { id: 'products', label: 'สินค้า', icon: Package },
   { id: 'coupons', label: 'คูปอง', icon: Gift },
+  { id: 'credit', label: 'Store Credit', icon: Wallet },
   { id: 'users', label: 'ผู้ใช้', icon: Users },
   { id: 'chat', label: 'แชท', icon: MessageCircle },
 ]
@@ -1273,6 +1469,7 @@ export default function Admin() {
             {tab === 'orders' && <OrderManagement />}
             {tab === 'products' && <ProductManagement />}
             {tab === 'coupons' && <CouponManagement />}
+            {tab === 'credit' && <StoreCreditManagement />}
             {tab === 'users' && <UserManagement />}
             {tab === 'chat' && <ChatManagement />}
           </motion.div>

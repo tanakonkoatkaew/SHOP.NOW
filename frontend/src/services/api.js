@@ -82,6 +82,10 @@ export const api = {
     updateCoupon:  (id, data)=> request('PUT',    `/admin/coupons/${id}`, data),
     deleteCoupon:  (id)      => request('DELETE', `/admin/coupons/${id}`),
     users:         ()        => request('GET',    '/admin/users'),
+    topupCodes:       ()       => request('GET',    '/admin/topup-codes'),
+    createTopupCodes: (data)   => request('POST',   '/admin/topup-codes', data),
+    deleteTopupCode:  (id)     => request('DELETE', `/admin/topup-codes/${id}`),
+    adjustCredit:     (id, data) => request('POST', `/admin/users/${id}/credit`, data),
     updateUser:    (id, data)=> request('PUT',    `/admin/users/${id}`, data),
     deleteUser:    (id)      => request('DELETE', `/admin/users/${id}`),
     userOrders:    (id)      => request('GET',    `/admin/users/${id}/orders`),
@@ -93,6 +97,15 @@ export const api = {
     chatMessages:       (sessionId)  => request('GET',    `/admin/chat/sessions/${sessionId}/messages`),
     chatReply:          (sessionId, text) => request('POST', `/admin/chat/sessions/${sessionId}/reply`, { text }),
     chatDelete:         (sessionId)  => request('DELETE', `/admin/chat/sessions/${sessionId}`),
+    deleteReview:       (reviewId)   => request('DELETE', `/admin/reviews/${reviewId}`),
+  },
+
+  // Product reviews
+  reviews: {
+    list:   (productId)       => request('GET',    `/products/product/${productId}/reviews`),
+    mine:   (productId)       => request('GET',    `/products/product/${productId}/reviews/me`),
+    save:   (productId, body) => request('POST',   `/products/product/${productId}/reviews`, body),
+    remove: (productId)       => request('DELETE', `/products/product/${productId}/reviews`),
   },
 
   // Chat (user side)

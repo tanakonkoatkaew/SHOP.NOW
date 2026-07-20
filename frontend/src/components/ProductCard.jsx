@@ -1,28 +1,21 @@
 import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 
-function pseudoRating(str) {
-  let h = 0
-  for (const c of String(str)) h = (h * 31 + c.charCodeAt(0)) & 0xffffffff
-  return (3.5 + (Math.abs(h) % 16) / 10).toFixed(1)
-}
-
-function Stars({ rating }) {
-  const r = parseFloat(rating)
+export function Stars({ rating, size = 14 }) {
+  const r = parseFloat(rating) || 0
   return (
     <div className="flex items-center gap-1">
       {[1, 2, 3, 4, 5].map(n => (
-        <svg key={n} width="14" height="14" viewBox="0 0 24 24" fill={n <= Math.round(r) ? '#FFC633' : '#e5e7eb'}>
+        <svg key={n} width={size} height={size} viewBox="0 0 24 24" fill={n <= Math.round(r) ? '#FFC633' : '#e5e7eb'}>
           <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" />
         </svg>
       ))}
-      <span className="text-xs text-gray-500 ml-0.5">{rating}/5</span>
     </div>
   )
 }
 
 export default function ProductCard({ product, index = 0 }) {
-  const rating = pseudoRating(product.id || product.name)
+  const rating = product.rating || { avg: null, count: 0 }
   const onSale = product.on_sale && product.original_price > product.price
   const off = onSale ? Math.round((1 - product.price / product.original_price) * 100) : 0
   const outOfStock = product.stock != null && product.stock <= 0
@@ -67,7 +60,14 @@ export default function ProductCard({ product, index = 0 }) {
           <h3 className="text-sm font-bold text-black leading-snug line-clamp-2 group-hover:underline">
             {product.name}
           </h3>
-          <Stars rating={rating} />
+          {rating.count > 0 ? (
+            <div className="flex items-center gap-1.5">
+              <Stars rating={rating.avg} />
+              <span className="text-xs text-gray-500">{rating.avg}/5 ({rating.count})</span>
+            </div>
+          ) : (
+            <span className="text-xs text-gray-400">ยังไม่มีรีวิว</span>
+          )}
           <div className="flex items-baseline gap-2">
             <p className={`text-base font-bold ${onSale ? 'text-red-500' : 'text-black'}`}>{product.price} ฿</p>
             {onSale && <p className="text-xs text-gray-400 line-through">{product.original_price} ฿</p>}

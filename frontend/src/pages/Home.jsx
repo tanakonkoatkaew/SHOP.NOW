@@ -48,7 +48,7 @@ function StarRow({ n }) {
 export default function Home() {
   const [products, setProducts] = useState([])
   const [stats, setStats] = useState(fallbackStats)
-  const [meta, setMeta] = useState({ products: null, avg_rating: 4.8 })
+  const [meta, setMeta] = useState({ products: null, avg_rating: null })
 
   useEffect(() => {
     api.products().then(({ ok, data }) => {
@@ -59,7 +59,7 @@ export default function Home() {
         setStats([
           { num: niceCount(data.products),  label: 'สินค้าทั้งหมด' },
           { num: niceCount(data.customers), label: 'ลูกค้าที่พอใจ' },
-          { num: `${data.avg_rating}★`,     label: 'คะแนนเฉลี่ย' },
+          { num: data.avg_rating != null ? `${data.avg_rating}★` : '—', label: 'คะแนนเฉลี่ย' },
         ])
         setMeta({ products: data.products, avg_rating: data.avg_rating })
       }
@@ -156,7 +156,7 @@ export default function Home() {
               >
                 <div className="w-10 h-10 bg-[#F2F0F1] rounded-xl flex items-center justify-center text-xl">⭐</div>
                 <div>
-                  <p className="font-black text-black text-sm">{meta.avg_rating} / 5.0</p>
+                  <p className="font-black text-black text-sm">{meta.avg_rating != null ? `${meta.avg_rating} / 5.0` : 'รีวิวจากผู้ซื้อจริง'}</p>
                   <p className="text-xs text-gray-500">คะแนนลูกค้า</p>
                 </div>
               </motion.div>
