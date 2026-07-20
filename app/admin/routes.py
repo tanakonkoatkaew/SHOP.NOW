@@ -3,6 +3,7 @@ import uuid
 import string
 import secrets
 from datetime import datetime, timezone, timedelta
+from PIL import Image
 from flask import Blueprint, request, jsonify, g
 from bson import ObjectId
 from app.extensions import get_db
@@ -129,6 +130,15 @@ def upload_product_image():
     ext = os.path.splitext(file.filename)[1].lower()
     if ext not in ALLOWED_IMAGE_EXT:
         return jsonify({"status": False, "message": "รองรับเฉพาะ JPG, PNG, GIF, WEBP"}), 400
+
+    # content check — extension alone is spoofable
+    try:
+        img = Image.open(file.stream)
+        img.verify()
+    except Exception:
+        return jsonify({"status": False, "message": "ไฟล์ไม่ใช่รูปภาพที่ถูกต้อง"}), 400
+    file.stream.seek(0)   # verify() consumes the stream
+
     os.makedirs(PRODUCT_FOLDER, exist_ok=True)
     filename = f"{uuid.uuid4().hex}{ext}"
     file.save(os.path.join(PRODUCT_FOLDER, filename))

@@ -4,7 +4,7 @@ import jwt
 from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, g
 from bson import ObjectId
-from app.extensions import get_db
+from app.extensions import get_db, limiter
 from app.utils.logger import send_discord_log_async
 from app.services.order_service import compute_order, finalize_order
 from app.services import stripe_service
@@ -198,6 +198,7 @@ def stripe_webhook():
 # ─── REDEEM CODE (store credit / gift card) ──────────────────────────────────
 
 @payment_bp.route('/redeem-code', methods=['POST'])
+@limiter.limit("5 per minute")    # กันการเดาโค้ดของขวัญ
 @auth_required
 def redeem_code():
     data = request.json or {}

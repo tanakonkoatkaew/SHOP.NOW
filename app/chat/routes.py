@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from bson import ObjectId
 from flask import Blueprint, request, jsonify, g
-from app.extensions import get_db
+from app.extensions import get_db, limiter
 from app.middlewares import auth_required, admin_required
 from app.services import gemini_service
 
@@ -138,6 +138,7 @@ def get_my_messages():
 
 
 @chat_bp.route('/send', methods=['POST'])
+@limiter.limit("15 per minute")   # ป้องกันโควต้า Gemini
 @auth_required
 def send_message():
     db = get_db()

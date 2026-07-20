@@ -12,3 +12,4 @@ bcrypt
 gunicorn
 google-cloud-vision
 stripe
+Flask-Limiter

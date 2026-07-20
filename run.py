@@ -8,4 +8,6 @@ from app import create_app
 app = create_app()
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8080)
+    # Dev only — gunicorn (Procfile) imports run:app and never hits this branch
+    debug = os.getenv("FLASK_DEBUG", "").lower() in ("1", "true", "yes")
+    app.run(debug=debug, port=8080)

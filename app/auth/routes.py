@@ -1,7 +1,7 @@
 from app.utils.logger import send_discord_log_async
 from bson import ObjectId
 from flask import Blueprint, request, jsonify, g
-from app.extensions import get_db, get_jwt_secret
+from app.extensions import get_db, get_jwt_secret, limiter
 from app.middlewares import auth_required
 import bcrypt
 import jwt
@@ -110,6 +110,7 @@ def _register_legacy_disabled():
 
 # ✅ LOGIN
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("10 per minute")
 def login():
     data = request.json
     username = data.get('username')

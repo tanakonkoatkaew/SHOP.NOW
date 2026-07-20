@@ -1,5 +1,15 @@
 import os
 from pymongo import MongoClient
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+# In-memory storage is per-gunicorn-worker (Procfile runs 2 workers → effective
+# limits are up to 2×). Acceptable here; switch storage_uri to Redis if scaling.
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["300 per minute"],
+    storage_uri="memory://",
+)
 
 client = None
 db = None

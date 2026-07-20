@@ -11,8 +11,8 @@ from app.payment.routes import payment_bp
 from app.admin.routes import admin_bp
 from app.chat.routes import chat_bp, admin_chat_bp
 
-# DB
-from app.extensions import init_db
+# DB + rate limiter
+from app.extensions import init_db, limiter
 
 
 def create_app():
@@ -21,8 +21,15 @@ def create_app():
         static_folder=os.path.join(os.path.dirname(__file__), 'static')
     )
 
-    # Enable CORS (สำหรับ frontend JS)
-    CORS(app)
+    # CORS: allowlist via env. Empty (default) = no cross-origin access at all —
+    # the SPA is served same-origin by frontend_bp, so nothing is needed in prod.
+    allowed_origins = [o.strip() for o in os.getenv("ALLOWED_ORIGINS", "").split(",") if o.strip()]
+    if allowed_origins:
+        CORS(app, origins=allowed_origins)
+
+    # Rate limiting (429) + upload size cap (413)
+    limiter.init_app(app)
+    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("MAX_UPLOAD_MB", "5")) * 1024 * 1024
 
     # Initialize MongoDB
     init_db()
@@ -41,5 +48,14 @@ def create_app():
     @app.errorhandler(404)
     def not_found(e):
         return jsonify({"status": False, "message": "Not Found"}), 404
+
+    @app.errorhandler(429)
+    def too_many_requests(e):
+        return jsonify({"status": False, "message": "คำขอถี่เกินไป กรุณาลองใหม่ภายหลัง"}), 429
+
+    @app.errorhandler(413)
+    def payload_too_large(e):
+        max_mb = os.getenv("MAX_UPLOAD_MB", "5")
+        return jsonify({"status": False, "message": f"ไฟล์ใหญ่เกินไป (สูงสุด {max_mb}MB)"}), 413
 
     return app
