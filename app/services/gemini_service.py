@@ -6,6 +6,7 @@ any failure so the caller can use the keyword bot instead.
 """
 import os
 import re
+import time
 import requests
 from bson import ObjectId
 
@@ -165,12 +166,22 @@ TOOL_HANDLERS = {
 
 # ─── off-topic pre-filter (cheap model, saves tokens on the main agent) ─────
 
+# When the filter model has no quota (429) or doesn't exist (404), stop
+# calling it for a while — the main model's prompt guard covers off-topic.
+_filter_down_until = 0.0
+
+
 def _is_on_topic(user_text, prev_bot_text=""):
     """Screen the question with a small model before running the full agent.
 
     Returns True when related to the store (fail-open on any error so real
-    questions are never blocked).
+    questions are never blocked). Set GEMINI_FILTER_MODEL=off to disable.
     """
+    global _filter_down_until
+    if _filter_model_name() in ("", "off", "none"):
+        return True
+    if time.time() < _filter_down_until:
+        return True
     context = f'\nข้อความก่อนหน้าของผู้ช่วย (บริบท): "{prev_bot_text[:200]}"' if prev_bot_text else ""
     prompt = (
         "คุณคือตัวกรองคำถามของร้านค้าออนไลน์ SHOP.NOW (ขายสินค้าดิจิทัล เกม บัตรเติมเงิน "
@@ -199,7 +210,13 @@ def _is_on_topic(user_text, prev_bot_text=""):
         answer = "".join(p.get("text", "") for p in parts).strip().upper()
         return not answer.startswith("NO")
     except Exception as e:
-        print(f"[gemini_service] filter error (fail-open): {e}")
+        status = getattr(getattr(e, "response", None), "status_code", None)
+        if status in (404, 429):
+            _filter_down_until = time.time() + 3600
+            print(f"[gemini_service] filter model unavailable ({status}), "
+                  f"disabled for 1h — prompt guard takes over")
+        else:
+            print(f"[gemini_service] filter error (fail-open): {e}")
         return True
 
 

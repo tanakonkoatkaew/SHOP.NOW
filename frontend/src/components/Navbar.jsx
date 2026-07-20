@@ -85,8 +85,12 @@ export default function Navbar() {
                   onClick={() => setUserMenuOpen(v => !v)}
                   className="flex items-center gap-2 px-4 py-2 rounded-full border border-gray-200 hover:border-black transition-all text-sm font-medium"
                 >
-                  <div className="w-6 h-6 bg-black rounded-full flex items-center justify-center">
-                    <span className="text-white text-xs font-bold">{user.username?.[0]?.toUpperCase()}</span>
+                  <div className="w-6 h-6 bg-black rounded-full flex items-center justify-center overflow-hidden">
+                    {user.avatar ? (
+                      <img src={user.avatar} alt={user.username} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-white text-xs font-bold">{user.username?.[0]?.toUpperCase()}</span>
+                    )}
                   </div>
                   <span className="text-gray-700">{user.username}</span>
                   <span className="font-semibold text-black">{parseFloat(user.credit || 0).toFixed(0)} ฿</span>
@@ -181,7 +185,14 @@ export default function Navbar() {
               </Link>
               {user ? (
                 <div className="pt-3 border-t border-gray-100 space-y-1">
-                  <p className="px-3 py-2 text-sm text-gray-500">
+                  <p className="px-3 py-2 text-sm text-gray-500 flex items-center gap-2">
+                    <span className="w-6 h-6 bg-black rounded-full flex items-center justify-center overflow-hidden shrink-0">
+                      {user.avatar ? (
+                        <img src={user.avatar} alt={user.username} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-white text-xs font-bold">{user.username?.[0]?.toUpperCase()}</span>
+                      )}
+                    </span>
                     {user.username} · <span className="font-bold text-black">{parseFloat(user.credit || 0).toFixed(0)} ฿</span>
                   </p>
                   <Link to="/profile" onClick={() => setOpen(false)} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-xl">โปรไฟล์</Link>

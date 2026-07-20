@@ -254,6 +254,7 @@ def get_user_basic():
         "user": {
             "id":       str(user["_id"]),
             "username": user["username"],
+            "avatar":   user.get("avatar", ""),
             "credit":   float(user.get("credit", 0.0)),
             "reward":   float(user.get("reward", 0.0)),
             "is_admin": bool(user.get("is_admin", False)),

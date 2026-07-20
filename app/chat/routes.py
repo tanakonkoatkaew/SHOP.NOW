@@ -200,6 +200,12 @@ def send_message():
             bot_reply = gemini_service.generate_reply(db, g.user_id, history, text)
             if not bot_reply:
                 bot_reply = _bot_autoreply(text)
+            if not bot_reply:
+                # AI unavailable and no keyword match — never leave the user hanging
+                bot_reply = (
+                    "ขออภัยครับ ระบบผู้ช่วย AI ไม่พร้อมใช้งานชั่วคราว 🙏\n"
+                    "สามารถไปที่แท็บ \"แอดมิน\" เพื่อฝากข้อความถึงทีมงานได้เลยครับ"
+                )
 
     bot_msg_doc = None
     if bot_reply:

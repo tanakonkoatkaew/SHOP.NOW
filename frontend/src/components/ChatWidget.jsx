@@ -8,7 +8,7 @@ import { useAuth } from '../hooks/useAuth'
 const WELCOME_MSG = {
   id: 'welcome',
   sender: 'bot',
-  text: 'สวัสดีครับ 👋 ผมคือ AI ผู้ช่วยของ SHOP.NOW\nสอบถามได้ทุกเรื่องเลยครับ เช่น หาสินค้า เช็คราคา เช็คเครดิต ดูออเดอร์ วิธีสั่งซื้อ ฯลฯ\n\nหรือแตะคำถามด่วนด้านล่างได้เลย',
+  text: 'สวัสดีครับ 👋 ผมคือ AI ผู้ช่วยของ SHOP.NOW\nสอบถามได้ทุกเรื่องเลยครับ เช่น หาสินค้า เช็คราคา เช็คเครดิต ดูออเดอร์ วิธีสั่งซื้อ ฯลฯ',
   created_at: '',
 }
 
@@ -76,7 +76,6 @@ export default function ChatWidget() {
   const location = useLocation()
   const [open, setOpen]         = useState(false)
   const [tab, setTab]           = useState('ai') // 'ai' | 'admin'
-  const [faq, setFaq]           = useState([])
   const [messages, setMessages] = useState([])
   const [text, setText]         = useState('')
   const [sending, setSending]   = useState(false)
@@ -86,11 +85,6 @@ export default function ChatWidget() {
   const aiMessages    = messages.filter(m => m.channel !== 'admin')
   const adminMessages = messages.filter(m => m.channel === 'admin')
   const shown         = tab === 'ai' ? aiMessages : adminMessages
-
-  // load FAQ once (used as quick-question chips)
-  useEffect(() => {
-    api.chat.faq().then(({ data }) => setFaq(data?.results || []))
-  }, [])
 
   const loadMessages = useCallback(async () => {
     if (!user) return
@@ -129,24 +123,6 @@ export default function ChatWidget() {
     }
     setSending(false)
     loadMessages()
-  }
-
-  // Quick-question chip: logged-in users get the canned FAQ answer instantly
-  // (saved to history); guests get it appended locally.
-  const handleFaq = async (item) => {
-    if (sending) return
-    if (!user) {
-      setMessages(m => [
-        ...m,
-        { id: 'q-' + Date.now(), sender: 'user', text: item.q, channel: 'ai', created_at: new Date().toISOString() },
-        { id: 'a-' + Date.now(), sender: 'bot',  text: item.a, channel: 'ai', created_at: new Date().toISOString() },
-      ])
-      return
-    }
-    const { ok, data } = await api.chat.faqAnswer(item.id)
-    if (ok) {
-      setMessages(m => [...m, data.question, data.answer])
-    }
   }
 
   // Hide widget on admin page — admins handle chats via the admin panel
@@ -242,20 +218,6 @@ export default function ChatWidget() {
                 </>
               )}
             </div>
-
-            {/* Quick questions — AI tab only */}
-            {tab === 'ai' && (
-              <div className="shrink-0 border-t border-gray-100 bg-white px-2.5 pt-2">
-                <div className="flex gap-1.5 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-                  {faq.map(item => (
-                    <button key={item.id} onClick={() => handleFaq(item)} disabled={sending}
-                      className="shrink-0 px-3 py-1.5 border-2 border-gray-200 rounded-full text-xs font-semibold text-gray-700 hover:border-black hover:text-black disabled:opacity-40 transition-colors">
-                      {item.q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Input */}
             <div className="border-t border-gray-100 p-2.5 shrink-0 bg-white">
